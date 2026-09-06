@@ -268,6 +268,7 @@ export interface Match {
     name: string | null;
     hasRconPassword?: boolean;
     isActive?: boolean;
+    country?: { code: string; name: string; discordFlagEmote: string | null } | null;
   } | null;
   matchStatisticsId: number | null;
   matchStatistics: MatchStatistics | null;

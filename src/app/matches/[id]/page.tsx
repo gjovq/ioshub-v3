@@ -6,7 +6,7 @@ import { TeamBadge } from '@/components/team-badge';
 import { Badge, Card, EmptyState, SectionHeader } from '@/components/ui';
 import { getLiveScore, getPlayerOfTheMatch, safe } from '@/lib/api';
 import { loadMatch, requireEntity } from '@/lib/entities';
-import { POSITION_GROUP_LABEL } from '@/lib/enums';
+import { BODY_PART_LABEL, POSITION_GROUP_LABEL } from '@/lib/enums';
 import {
   clock,
   fmtDateTime,
@@ -21,6 +21,7 @@ import {
 import {
   buildLiveTimeline,
   buildTimeline,
+  liveSummary,
   playersBySide,
   shotEvents,
   teamTotals,
@@ -543,6 +544,11 @@ function Timeline({
                   {e.event === 'OWN GOAL' && (
                     <div className="text-[11px] text-red-400/80">own goal</div>
                   )}
+                  {e.bodyPart > 0 && (
+                    <div className="text-[10px] text-chalk-600">
+                      {BODY_PART_LABEL[e.bodyPart]}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -758,17 +764,24 @@ function LivePanel({
 }) {
   const endpoint = serverEndpointFromToken(state.matchDataToken);
   const password = serverPassword(match.server?.name);
+  const warmup = state.matchPeriod === 'WARM-UP';
   const liveTimeline = buildLiveTimeline(state.matchEvents);
+  const summary = liveSummary(state.matchEvents);
   const liveShots = (state.matchEvents ?? []).filter(
     (e) =>
       ['GOAL', 'MISS', 'SAVE', 'OWN GOAL'].includes(e.event) && e.startPosition != null,
   );
+  const flag = match.server?.country?.discordFlagEmote;
 
   return (
     <section>
       <SectionHeader
         title="Live statistics"
-        subtitle={`${state.matchPeriod} · ${clock(state.matchSeconds)} · ${state.serverPlayerCount} players on`}
+        subtitle={
+          warmup
+            ? 'Warm-up · kick-off imminent'
+            : `${state.matchPeriod} · ${clock(state.matchSeconds)} · ${state.serverPlayerCount} players on`
+        }
       />
       <Card className="divide-y divide-[var(--line)]">
         <div className="grid grid-cols-3 items-center px-4 py-4 text-center sm:py-5">
@@ -794,6 +807,39 @@ function LivePanel({
             )}
           </div>
         </div>
+
+        {!warmup && (
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-4 py-4 sm:grid-cols-4">
+            <SummaryStat
+              label="Shots"
+              home={summary.home.attempts}
+              away={summary.away.attempts}
+              homeColor={homeColor}
+              awayColor={awayColor}
+            />
+            <SummaryStat
+              label="On target"
+              home={summary.home.onTarget}
+              away={summary.away.onTarget}
+              homeColor={homeColor}
+              awayColor={awayColor}
+            />
+            <SummaryStat
+              label="Saves"
+              home={summary.home.saves}
+              away={summary.away.saves}
+              homeColor={homeColor}
+              awayColor={awayColor}
+            />
+            <SummaryStat
+              label="Cards"
+              home={summary.home.cards}
+              away={summary.away.cards}
+              homeColor={homeColor}
+              awayColor={awayColor}
+            />
+          </div>
+        )}
 
         {liveTimeline.length > 0 && (
           <div className="p-4 sm:p-5">
@@ -830,6 +876,7 @@ function LivePanel({
             <div className="min-w-0">
               <div className="label-xs">Server</div>
               <div className="truncate text-[13px] text-chalk-300">
+                {flag ? `${flag} ` : ''}
                 {match.server?.name ?? endpoint}
               </div>
             </div>
@@ -875,6 +922,35 @@ function Lineup({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function SummaryStat({
+  label,
+  home,
+  away,
+  homeColor,
+  awayColor,
+}: {
+  label: string;
+  home: number;
+  away: number;
+  homeColor: string;
+  awayColor: string;
+}) {
+  return (
+    <div className="text-center">
+      <div className="label-xs">{label}</div>
+      <div className="mt-1 flex items-center justify-center gap-2 text-sm">
+        <span className="tabular font-semibold" style={{ color: homeColor }}>
+          {home}
+        </span>
+        <span className="text-chalk-600">–</span>
+        <span className="tabular font-semibold" style={{ color: awayColor }}>
+          {away}
+        </span>
+      </div>
     </div>
   );
 }

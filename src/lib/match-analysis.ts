@@ -283,3 +283,41 @@ export function buildLiveTimeline(
   }
   return out;
 }
+
+/** Per-side summary computed from a live event stream. */
+export function liveSummary(
+  events: MatchEvent[] | null | undefined,
+): {
+  home: { goals: number; onTarget: number; attempts: number; cards: number; saves: number };
+  away: { goals: number; onTarget: number; attempts: number; cards: number; saves: number };
+} {
+  const empty = { goals: 0, onTarget: 0, attempts: 0, cards: 0, saves: 0 };
+  const home = { ...empty };
+  const away = { ...empty };
+
+  for (const e of events ?? []) {
+    const t = e.team === 'home' ? home : away;
+    switch (e.event) {
+      case 'GOAL':
+      case 'OWN GOAL':
+        t.goals++;
+        t.onTarget++;
+        t.attempts++;
+        break;
+      case 'SAVE':
+        t.onTarget++;
+        t.attempts++;
+        t.saves++;
+        break;
+      case 'MISS':
+        t.attempts++;
+        break;
+      case 'YELLOW CARD':
+      case 'SECOND YELLOW':
+      case 'RED CARD':
+        t.cards++;
+        break;
+    }
+  }
+  return { home, away };
+}
