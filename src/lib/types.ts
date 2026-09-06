@@ -258,7 +258,12 @@ export interface Match {
   teamAwayId: number | null;
   teamAway: Team | null;
   serverId: number | null;
-  server: { id: number; name: string | null } | null;
+  server: {
+    id: number;
+    name: string | null;
+    hasRconPassword?: boolean;
+    isActive?: boolean;
+  } | null;
   matchStatisticsId: number | null;
   matchStatistics: MatchStatistics | null;
   kickOff: string;

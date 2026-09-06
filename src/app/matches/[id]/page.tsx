@@ -1,9 +1,10 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { CompareBar, SplitGauge } from '@/components/compare-bar';
 import { ShotMap } from '@/components/shot-map';
 import { TeamBadge } from '@/components/team-badge';
 import { Badge, Card, EmptyState, SectionHeader } from '@/components/ui';
-import { getPlayerOfTheMatch, safe } from '@/lib/api';
+import { getLiveScore, getPlayerOfTheMatch, safe } from '@/lib/api';
 import { loadMatch, requireEntity } from '@/lib/entities';
 import { POSITION_GROUP_LABEL } from '@/lib/enums';
 import {
@@ -26,6 +27,7 @@ import {
   type SidePlayer,
   type TimelineEvent,
 } from '@/lib/match-analysis';
+import { connectLink, serverEndpointFromToken, serverPassword } from '@/lib/servers';
 import type { Match } from '@/lib/types';
 
 export const revalidate = 120;
@@ -49,6 +51,7 @@ export default async function MatchPage({ params }: { params: Params }) {
   const potm = match.playerOfTheMatchId ? await safe(getPlayerOfTheMatch(matchId)) : null;
   const md = match.matchStatistics?.matchData ?? null;
   const score = matchScore(match);
+  const live = md ? null : await safe(getLiveScore(matchId));
 
   const homeColor = safeColor(match.teamHome?.color, '#2563eb');
   const awayColor = safeColor(match.teamAway?.color, '#dc2626');
@@ -74,16 +77,28 @@ export default async function MatchPage({ params }: { params: Params }) {
       />
 
       {!md ? (
-        <div className="mt-8">
-          <EmptyState
-            title="No detailed statistics for this match"
-            hint={
-              score
-                ? 'The scoreline is recorded but the server never uploaded a full match file.'
-                : 'This match has not been played yet. Detailed stats appear after the final whistle.'
-            }
-            icon="📊"
-          />
+        <div className="mt-8 space-y-8">
+          {live?.item2 && (
+            <Suspense fallback={null}>
+              <LivePanel
+                match={match}
+                state={live.item2}
+                homeColor={homeColor}
+                awayColor={awayC}
+              />
+            </Suspense>
+          )}
+          {!live?.item2 && (
+            <EmptyState
+              title="No detailed statistics for this match"
+              hint={
+                score
+                  ? 'The scoreline is recorded but the server never uploaded a full match file.'
+                  : 'This match has not been played yet. Detailed stats appear after the final whistle.'
+              }
+              icon="📊"
+            />
+          )}
         </div>
       ) : (
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
@@ -725,6 +740,125 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="flex items-start justify-between gap-3 px-4 py-2.5">
       <span className="label-xs shrink-0 pt-0.5">{label}</span>
       <span className="min-w-0 truncate text-right text-[13px] text-chalk-300">{value}</span>
+    </div>
+  );
+}
+
+function LivePanel({
+  match,
+  state,
+  homeColor,
+  awayColor,
+}: {
+  match: Match;
+  state: NonNullable<Awaited<ReturnType<typeof getLiveScore>>>['item2'];
+  homeColor: string;
+  awayColor: string;
+}) {
+  const endpoint = serverEndpointFromToken(state.matchDataToken);
+  const password = serverPassword(match.server?.name);
+
+  return (
+    <section>
+      <SectionHeader
+        title="Live statistics"
+        subtitle={`${state.matchPeriod} · ${clock(state.matchSeconds)} played`}
+      />
+      <Card className="divide-y divide-[var(--line)]">
+        <div className="grid grid-cols-3 items-center px-4 py-4 text-center sm:py-5">
+          <div className="min-w-0 text-right">
+            <div className="truncate font-display text-sm font-bold text-chalk-100 sm:text-base">
+              {state.teamNameHome}
+            </div>
+            {state.teamCodeHome && (
+              <div className="label-xs mt-0.5">{state.teamCodeHome}</div>
+            )}
+          </div>
+          <div className="tabular font-display text-4xl font-bold text-chalk-100">
+            {state.matchGoalsHome}
+            <span className="mx-1.5 text-chalk-700">–</span>
+            {state.matchGoalsAway}
+          </div>
+          <div className="min-w-0 text-left">
+            <div className="truncate font-display text-sm font-bold text-chalk-100 sm:text-base">
+              {state.teamNameAway}
+            </div>
+            {state.teamCodeAway && (
+              <div className="label-xs mt-0.5">{state.teamCodeAway}</div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 px-4 py-4 sm:grid-cols-2">
+          <Lineup title={state.teamNameHome} color={homeColor} rows={state.teamLineupHome} />
+          <Lineup title={state.teamNameAway} color={awayColor} rows={state.teamLineupAway} />
+        </div>
+
+        {(state.matchEvents?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-4 py-3">
+            {(state.matchEvents ?? [])
+              .filter((e) => e.event === 'GOAL' || e.event === 'OWN GOAL')
+              .map((e, i) => (
+                <span
+                  key={i}
+                  className="tabular rounded bg-white/[0.05] px-1.5 py-0.5 text-[10px] text-chalk-400"
+                >
+                  ⚽ {Math.round(e.second / 60)}&apos; {e.team}
+                </span>
+              ))}
+          </div>
+        )}
+
+        {endpoint && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+            <div className="min-w-0">
+              <div className="label-xs">Server</div>
+              <div className="truncate text-[13px] text-chalk-300">
+                {match.server?.name ?? endpoint}
+              </div>
+            </div>
+            <a
+              href={connectLink(endpoint)}
+              title={`Password: ${password}`}
+              className="shrink-0 rounded-lg bg-turf-500/15 px-3 py-1.5 text-xs font-semibold text-turf-400 ring-1 ring-inset ring-turf-500/25 transition-colors hover:bg-turf-500/25"
+            >
+              Connect to server
+            </a>
+          </div>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function Lineup({
+  title,
+  color,
+  rows,
+}: {
+  title: string;
+  color: string;
+  rows: { position: string; name: string | null; steamId: string | null }[];
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="h-3 w-1 rounded-full" style={{ background: color }} />
+        <span className="truncate font-display text-xs font-bold uppercase tracking-wider text-chalk-300">
+          {title}
+        </span>
+      </div>
+      <ul className="space-y-1">
+        {rows.map((r, i) => (
+          <li key={i} className="flex items-center gap-2 text-[13px]">
+            <span className="tabular w-8 shrink-0 text-[10px] font-bold text-chalk-600">
+              {r.position}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-chalk-300">{r.name ?? 'Unknown'}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
