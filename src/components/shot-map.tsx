@@ -17,33 +17,25 @@ export type Shot = {
 };
 
 /**
- * Rough xG estimate from shot distance and angle to the shooting team's
- * *attacking* goal. Not an official model — the engine's per-shot
- * expectedGoals stat is only in aggregate stat arrays, never on the event
- * itself.
+ * Rough xG estimate from a shot's distance and angle to the *nearest* goal.
+ * A shot is always taken near the goal it is attacking, so measuring to the
+ * nearer of the two goals needs no team/period assumptions and cannot be
+ * wrong about end swaps. Not an official model — the engine's per-shot
+ * expectedGoals stat is only in aggregate stat arrays, never on the event.
  */
-function estimateXg(
-  p: Vec2,
-  team: 'home' | 'away',
-  field: { halfX: number; halfY: number },
-  swapped: boolean,
-): number {
-  // goal mouth centre of the team's attacking end; teams swap ends at half-time
-  const attackingEnd = team === 'home' ? (swapped ? -1 : 1) : swapped ? 1 : -1;
-  const goalY = attackingEnd * field.halfY;
-  // normalised offsets from the goal mouth: 1 unit = half pitch width/length
-  const dx = p.x / field.halfX;
-  const dy = (p.y - goalY) / (field.halfY * 2);
-  // across axis contributes less (pitch is ~2x longer than wide)
-  const dist = Math.hypot(dx * 0.45, dy);
+function estimateXg(p: Vec2, field: { halfX: number; halfY: number }): number {
+  // distance to the top goal (y=+halfY) and bottom goal (y=-halfY)
+  const toTop = Math.hypot((p.x / field.halfX) * 0.45, (p.y - field.halfY) / (field.halfY * 2));
+  const toBottom = Math.hypot((p.x / field.halfX) * 0.45, (p.y + field.halfY) / (field.halfY * 2));
+  const dist = Math.min(toTop, toBottom);
 
   // angle: how much of the goal is visible from the shot position
   const goalHalfWidth = 0.12; // goal mouth as a fraction of pitch width, tuned
   const angle = Math.atan2(goalHalfWidth, Math.max(0.02, dist)) / Math.PI; // 0..0.5
   const angleFactor = Math.min(1, angle / 0.35); // saturates once fairly central+close
 
-  // distance decay tuned so: 6-yard box ~0.45, penalty spot ~0.30, edge of box
-  // ~0.12, halfway ~0.02
+  // distance decay tuned so that: 6-yard box ~0.5, penalty spot ~0.3, edge of
+  // box ~0.12, halfway ~0.03
   const base = 0.6 * Math.exp(-3.2 * dist);
   return Math.max(0.01, Math.min(0.85, base * (0.08 + 0.92 * angleFactor)));
 }
@@ -77,26 +69,19 @@ export function ShotMap({
   const H = 240;
   const spanX = Math.max(1, fieldMax.x - fieldMin.x);
   const spanY = Math.max(1, fieldMax.y - fieldMin.y);
-  // teams swap ends at half-time; shots after the first half attack the other goal
-  const secondHalf = (s: Shot) => /SECOND|2ND|2nd/i.test(s.period ?? '');
-
   const plotted = shots
     .map((s, i) => {
       if (!s.startPosition) return null;
       const p = s.startPosition;
-      const swapped = secondHalf(s);
       // -1..1 across the full pitch, -1..1 along it (top = home attack)
       const nx = Math.max(-1, Math.min(1, (2 * (p.x - fieldMin.x)) / spanX - 1));
-      // mirror vertically in the second half so each team's shots stay on its
-      // attacking end of the rendered pitch
-      const nyRaw = (2 * (p.y - fieldMin.y)) / spanY - 1;
-      const ny = Math.max(-1, Math.min(1, swapped ? -nyRaw : nyRaw));
+      const ny = Math.max(-1, Math.min(1, (2 * (p.y - fieldMin.y)) / spanY - 1));
       return {
         key: i,
         cx: W / 2 + (nx * (W / 2 - 10)),
-        // engine +y (home first-half attack) maps to the top of the SVG
+        // engine +y maps to the top of the SVG
         cy: H / 2 - (ny * (H / 2 - 10)),
-        xg: estimateXg(p, s.team, { halfX: spanX / 2, halfY: spanY / 2 }, swapped),
+        xg: estimateXg(p, { halfX: spanX / 2, halfY: spanY / 2 }),
         shot: s,
       };
     })
