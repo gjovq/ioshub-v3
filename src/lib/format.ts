@@ -197,6 +197,19 @@ export function mapLabel(name: string | null | undefined): string {
   return name.replace(/^\d+v\d+_/, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * ISO country code to regional-indicator emoji (FR -> 🇫🇷). The API only gives
+ * text like `:flag_fr:`; the browser cannot render those as emoji on its own.
+ */
+export function flagEmoji(code: string | null | undefined): string {
+  if (!code || !/^[a-z]{2}$/i.test(code)) return '';
+  return code
+    .toUpperCase()
+    .split('')
+    .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
+    .join('');
+}
+
 /** Readable text colour for an arbitrary team hex. */
 export function contrastOn(hex: string | null | undefined): string {
   if (!hex) return '#ffffff';

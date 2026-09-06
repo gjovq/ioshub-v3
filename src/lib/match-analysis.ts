@@ -237,6 +237,7 @@ export function shotEvents(md: MatchData) {
       playerName: byId.get(e.player1SteamId) ?? 'Unknown',
       isGoal: e.event === 'GOAL',
       minute: Math.max(1, Math.round(e.second / 60)),
+      bodyPart: e.bodyPart,
     }));
 }
 

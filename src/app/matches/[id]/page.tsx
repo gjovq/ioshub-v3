@@ -860,9 +860,11 @@ function LivePanel({
                 playerName: e.player1Name ?? 'Unknown',
                 isGoal: e.event === 'GOAL',
                 minute: Math.max(1, Math.round(e.second / 60)),
+                bodyPart: e.bodyPart,
               }))}
-              fieldMin={{ x: -4200, y: -2400 }}
-              fieldMax={{ x: 4200, y: 2400 }}
+              // standard engine pitch; live events carry no field bounds
+              fieldMin={{ x: -1554, y: -2406 }}
+              fieldMax={{ x: 1554, y: 2406 }}
               homeColor={homeColor}
               awayColor={awayColor}
               homeName={state.teamNameHome}
@@ -918,7 +920,15 @@ function Lineup({
             <span className="tabular w-8 shrink-0 text-[10px] font-bold text-chalk-600">
               {r.position}
             </span>
-            <span className="min-w-0 flex-1 truncate text-chalk-300">{r.name ?? 'Unknown'}</span>
+            <span
+              className={`min-w-0 flex-1 truncate ${
+                r.name
+                  ? 'text-chalk-300'
+                  : 'text-chalk-700 italic'
+              }`}
+            >
+              {r.name ?? 'Unknown'}
+            </span>
           </li>
         ))}
       </ul>

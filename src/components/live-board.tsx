@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useLiveScores, type LiveEntry } from '@/components/live-strip';
 import { TeamBadge } from '@/components/team-badge';
 import { Badge, Card, EmptyState, LiveDot, SectionHeader, Skeleton } from '@/components/ui';
-import { clock, mapLabel, readableOn, safeColor, teamLabel } from '@/lib/format';
+import { clock, flagEmoji, mapLabel, readableOn, safeColor, teamLabel } from '@/lib/format';
 
 const REGION_LABEL: Record<number, string> = {
   1: 'Europe',
@@ -121,10 +121,7 @@ function LiveMatchCard({ entry }: { entry: LiveEntry }) {
   const warmup = s.matchPeriod === 'WARM-UP';
   const homeColor = safeColor(match.teamHome?.color, '#2563eb');
   const awayColor = safeColor(match.teamAway?.color, '#dc2626');
-
-  const goalEvents = (s.matchEvents ?? []).filter(
-    (e) => e.event === 'GOAL' || e.event === 'OWN GOAL',
-  );
+  const flag = flagEmoji(match.server?.country?.code);
 
   return (
     <Card className="group relative overflow-hidden">
@@ -132,97 +129,93 @@ function LiveMatchCard({ entry }: { entry: LiveEntry }) {
         className="absolute inset-x-0 top-0 h-0.5"
         style={{ background: `linear-gradient(90deg, ${homeColor}, ${awayColor})` }}
       />
-      <Link href={`/matches/${match.id}`} className="block p-4">
-        <div className="mb-4 flex items-center justify-between gap-2">
+      <Link href={`/matches/${match.id}`} className="block p-3.5">
+        <div className="mb-2.5 flex items-center justify-between gap-2">
           {warmup ? (
             <Badge tone="muted">Warm-up</Badge>
           ) : (
             <Badge tone="live">
               <LiveDot />
               <span className="tabular">{clock(s.matchSeconds)}</span>
-              <span className="opacity-70">{s.matchPeriod}</span>
+              <span className="opacity-70">
+                {s.matchPeriod.replace(' HALF', '')}
+              </span>
             </Badge>
           )}
           <span className="truncate text-[10px] text-chalk-600">
-            {mapLabel(s.mapName)}
+            {flag} {s.matchFormat}v{s.matchFormat}
           </span>
         </div>
 
-        <Side
-          team={match.teamHome}
-          fallback={s.teamNameHome}
-          goals={s.matchGoalsHome}
-          lead={s.matchGoalsHome > s.matchGoalsAway}
-          color={homeColor}
-        />
-        <div className="my-2.5 h-px bg-[var(--line)]" />
-        <Side
-          team={match.teamAway}
-          fallback={s.teamNameAway}
-          goals={s.matchGoalsAway}
-          lead={s.matchGoalsAway > s.matchGoalsHome}
-          color={awayColor}
-        />
+        {/* compact one-row scoreline: CON 1 – 1 Dons */}
+        <div className="flex items-center justify-between gap-2">
+          <SideName
+            team={match.teamHome}
+            fallback={s.teamNameHome}
+            lead={s.matchGoalsHome > s.matchGoalsAway}
+            color={homeColor}
+            align="left"
+          />
+          <span
+            className="tabular shrink-0 font-display text-xl font-bold"
+            style={{ color: readableOn(homeColor) }}
+          >
+            {s.matchGoalsHome}
+          </span>
+          <span className="shrink-0 text-xs text-chalk-700">–</span>
+          <span
+            className="tabular shrink-0 font-display text-xl font-bold"
+            style={{ color: readableOn(awayColor) }}
+          >
+            {s.matchGoalsAway}
+          </span>
+          <SideName
+            team={match.teamAway}
+            fallback={s.teamNameAway}
+            lead={s.matchGoalsAway > s.matchGoalsHome}
+            color={awayColor}
+            align="right"
+          />
+        </div>
 
-        <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-[11px] text-chalk-600">
+        <div className="mt-2.5 flex items-center justify-between border-t border-[var(--line)] pt-2.5 text-[10px] text-chalk-600">
           <span>
-            {s.serverPlayerCount}/{s.matchFormat * 2} players
+            👥 {s.serverPlayerCount}/{s.matchFormat * 2} · {mapLabel(s.mapName)}
           </span>
-          {match.tournament ? (
-            <span className="max-w-[55%] truncate text-flare-500/80">
-              {match.tournament.name}
-            </span>
-          ) : (
-            <span>{s.matchFormat}v{s.matchFormat}</span>
-          )}
         </div>
 
-        {goalEvents.length > 0 && (
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {goalEvents.slice(-4).map((e, i) => (
-              <span
-                key={i}
-                className="tabular rounded bg-white/[0.05] px-1.5 py-0.5 text-[10px] text-chalk-400"
-              >
-                ⚽ {Math.round(e.second / 60)}&apos;
-              </span>
-            ))}
-          </div>
-        )}
       </Link>
     </Card>
   );
 }
 
-function Side({
+function SideName({
   team,
   fallback,
-  goals,
   lead,
-  color,
+  align,
 }: {
   team: LiveEntry['item1']['teamHome'];
   fallback: string;
-  goals: number;
   lead: boolean;
   color: string;
+  align: 'left' | 'right';
 }) {
+  const name = team ? teamLabel(team) : fallback;
   return (
-    <div className="flex items-center gap-3">
-      <TeamBadge team={team} size="md" name={fallback} />
+    <span
+      className={`flex min-w-0 flex-1 items-center gap-1.5 ${
+        align === 'right' ? 'flex-row-reverse' : ''
+      }`}
+    >
+      <TeamBadge team={team} size="xs" name={fallback} />
       <span
-        className={`min-w-0 flex-1 truncate text-[15px] ${
-          lead ? 'font-semibold text-chalk-100' : 'font-medium text-chalk-300'
+        className={`min-w-0 truncate text-[13px] ${
+          lead ? 'font-semibold text-chalk-100' : 'font-medium text-chalk-400'
         }`}
       >
-        {team ? teamLabel(team) : fallback}
+        {name}
       </span>
-      <span
-        className="tabular font-display text-2xl font-bold"
-        style={{ color: lead ? readableOn(color) : 'var(--color-chalk-500)' }}
-      >
-        {goals}
-      </span>
-    </div>
+    </span>
   );
 }
