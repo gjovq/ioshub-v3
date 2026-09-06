@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+@theme {
+  --color-pitch-950: #05070a;
+  --color-pitch-900: #0a0e14;
+  --color-pitch-850: #0e131b;
+  --color-pitch-800: #131923;
+  --color-pitch-700: #1b2432;
+  --color-pitch-600: #26323f;
+  --color-pitch-500: #3a4a5c;
+
+  /* Tuned so chalk-500 and above clear WCAG AA (4.5:1) on the pitch-950
+     background; chalk-600/700 are decorative only (icons, dividers, hints). */
+  --color-chalk-700: #4a5768;
+  --color-chalk-600: #6b7a8d;
+  --color-chalk-500: #8d9bad;
+  --color-chalk-400: #a8b4c4;
+  --color-chalk-300: #c3ccd8;
+  --color-chalk-200: #dde4ec;
+  --color-chalk-100: #f2f6fa;
+
+  --color-turf-600: #16a34a;
+  --color-turf-500: #22c55e;
+  --color-turf-400: #4ade80;
+
+  --color-flare-600: #d97706;
+  --color-flare-500: #f59e0b;
+  --color-flare-400: #fbbf24;
+
+  --color-card-red: #ef4444;
+  --color-card-yellow: #eab308;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-outfit), var(--font-inter), sans-serif;
+  --font-mono: var(--font-mono-stack), ui-monospace, "SF Mono", monospace;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #05070a;
+  --surface: #0a0e14;
+  --surface-2: #0e131b;
+  --line: rgba(148, 163, 184, 0.11);
+  --line-strong: rgba(148, 163, 184, 0.2);
+}
+
+* {
+  border-color: var(--line);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--color-chalk-200);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04";
+  min-height: 100vh;
+}
+
+/* Subtle stadium-light wash behind everything */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(900px 500px at 12% -8%, rgba(34, 197, 94, 0.07), transparent 65%),
+    radial-gradient(800px 460px at 92% 4%, rgba(59, 130, 246, 0.06), transparent 62%),
+    linear-gradient(180deg, #070a0f 0%, #05070a 55%);
+}
+
+::selection {
+  background: rgba(34, 197, 94, 0.28);
+  color: #f2f6fa;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f2a38;
+  border-radius: 99px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2c3a4c;
+}
+
+@utility surface {
+  background: linear-gradient(180deg, rgba(19, 25, 35, 0.9), rgba(10, 14, 20, 0.9));
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+@utility surface-flat {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 0.875rem;
+}
+
+@utility hairline {
+  border-color: var(--line);
+}
+
+@utility label-xs {
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-chalk-500);
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-live {
+  animation: pulse-live 1.6s ease-in-out infinite;
+}
+
+.animate-rise {
+  animation: rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148, 163, 184, 0.07),
+    transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+/* Chrome/Safari number-input spinners are noise in filter forms */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}

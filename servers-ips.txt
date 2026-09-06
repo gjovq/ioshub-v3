@@ -1,0 +1,33 @@
+1 [EU/FR] Official 8v8 | Match 1  [3/32]  :flag_fr:
+145.239.130.30:27035
+2 [EU/FR] Official 8v8 | Match 2  [18/32]  :flag_fr:
+145.239.130.30:27045
+3 [EU/FR] Official 8v8 | Match 3  [2/32]  :flag_fr:
+145.239.130.30:27055
+4 [EU/FR] Official 8v8 | Match 4  [2/32]  :flag_fr:
+145.239.130.30:27065
+5 [EU/FR] Official 8v8 | Match 5  [2/32]  :flag_fr:
+145.239.130.30:27075
+6 [EU/FR] Official 8v8 | Match 6  [2/32]  :flag_fr:
+145.239.130.30:27085
+7 [EU/DE] Official 8v8 | Match 1  [2/32]  :flag_de:
+51.77.68.87:27035
+8 [EU/DE] Official 8v8 | Match 2  [6/32]  :flag_de:
+51.77.68.87:27045
+9 [EU/DE] Official 8v8 | Match 3  [2/32]  :flag_de:
+51.77.68.87:27055
+10 [EU/DE] Official 8v8 | Match 4  [2/32]  :flag_de:
+51.77.68.87:27065
+11 [EU/DE] Official 8v8 | Match 5  [2/32]  :flag_de:
+51.77.68.87:27075
+12 [EU/DE] Official 8v8 | Match 6  [2/32]  :flag_de:
+51.77.68.87:27085
+13 [EU/FR] Official 4v4 | Match  [2/32]  :flag_fr:
+145.239.130.30:27155
+14 [EU/DE] Official 4v4 | Match  [2/32]  :flag_de:
+51.77.68.87:27155
+15 [EU/FR] Official 8v8 | Match 7  [2/32]  :flag_fr:
+145.239.130.30:27165
+16 [EU/FR] Official 8v8 | Match 8  [2/32]  :flag_fr:
+145.239.130.30:27175
+iosoccer.com/connect/#
