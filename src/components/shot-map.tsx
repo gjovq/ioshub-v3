@@ -15,17 +15,29 @@ export type Shot = {
 };
 
 /**
- * Rough xG estimate from shot distance and angle to the *attacking* goal. Not
- * an official model — the engine's per-shot expectedGoals stat is only in
- * aggregate stat arrays, never on the event itself. Distance dominates; tight
- * angle reduces the chance.
+ * Rough xG estimate from shot distance and angle to the shooting team's
+ * *attacking* goal. Not an official model — the engine's per-shot
+ * expectedGoals stat is only in aggregate stat arrays, never on the event
+ * itself.
  */
-function estimateXg(p: Vec2, fieldHalfLength: number, fieldHalfWidth: number): number {
-  // distance from the goal at +halfLength (home's attacking end); for away
-  // shots (negative y) the mirrored distance is the same magnitude
-  const d = Math.hypot(p.x / fieldHalfWidth, p.y / fieldHalfLength);
-  const angleFactor = Math.max(0.25, 1 - Math.abs(p.x) / (fieldHalfWidth * 1.6));
-  return Math.max(0.01, Math.min(0.95, 0.75 * Math.exp(-1.35 * d) * angleFactor));
+function estimateXg(p: Vec2, team: 'home' | 'away', field: { halfX: number; halfY: number }): number {
+  // goal mouth centre of the team's attacking end
+  const goalY = team === 'home' ? field.halfY : -field.halfY;
+  // normalised offsets from the goal mouth: 1 unit = half pitch width/length
+  const dx = p.x / field.halfX;
+  const dy = (p.y - goalY) / (field.halfY * 2);
+  // across axis contributes less (pitch is ~2x longer than wide)
+  const dist = Math.hypot(dx * 0.45, dy);
+
+  // angle: how much of the goal is visible from the shot position
+  const goalHalfWidth = 0.12; // goal mouth as a fraction of pitch width, tuned
+  const angle = Math.atan2(goalHalfWidth, Math.max(0.02, dist)) / Math.PI; // 0..0.5
+  const angleFactor = Math.min(1, angle / 0.35); // saturates once fairly central+close
+
+  // distance decay tuned so: 6-yard box ~0.45, penalty spot ~0.30, edge of box
+  // ~0.12, halfway ~0.02
+  const base = 0.6 * Math.exp(-3.2 * dist);
+  return Math.max(0.01, Math.min(0.85, base * (0.08 + 0.92 * angleFactor)));
 }
 
 /**
@@ -70,7 +82,7 @@ export function ShotMap({
         cx: W / 2 + (nx * (W / 2 - 10)),
         // engine +y (home attack) maps to the top of the SVG
         cy: H / 2 - (ny * (H / 2 - 10)),
-        xg: estimateXg(p, spanY / 2, spanX / 2),
+        xg: estimateXg(p, s.team, { halfX: spanX / 2, halfY: spanY / 2 }),
         shot: s,
       };
     })
