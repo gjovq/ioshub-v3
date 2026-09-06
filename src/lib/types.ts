@@ -180,7 +180,12 @@ export interface MatchEvent {
   event: string;
   period: string;
   player1SteamId: string;
+  /** live-scores events carry inline names; match-file events do not */
+  player1Name?: string | null;
   player2SteamId: string;
+  player2Name?: string | null;
+  player3SteamId?: string;
+  player3Name?: string | null;
   second: number;
   team: 'home' | 'away';
   bodyPart: number;

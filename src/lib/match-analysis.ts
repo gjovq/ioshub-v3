@@ -250,3 +250,36 @@ export function matchDuration(md: MatchData): number {
   if (info?.endTime && info?.startTime) return info.endTime - info.startTime;
   return 0;
 }
+
+/**
+ * Timeline from a live-score's inline event list. Live events carry player
+ * names directly (the finished match file does not), so no name map is needed.
+ */
+export function buildLiveTimeline(
+  events: MatchEvent[] | null | undefined,
+): TimelineEvent[] {
+  if (!events?.length) return [];
+
+  let home = 0;
+  let away = 0;
+  const out: TimelineEvent[] = [];
+
+  for (const e of [...events].sort((a, b) => a.second - b.second)) {
+    if (SCORING.has(e.event)) {
+      const credited = e.event === 'OWN GOAL' ? (e.team === 'home' ? 'away' : 'home') : e.team;
+      if (credited === 'home') home++;
+      else away++;
+    }
+    if (!NOTABLE_EVENTS.has(e.event)) continue;
+
+    out.push({
+      ...e,
+      playerName: e.player1Name ?? null,
+      assistName: e.player2Name || null,
+      minute: Math.max(1, Math.round(e.second / 60)),
+      scoreHome: home,
+      scoreAway: away,
+    });
+  }
+  return out;
+}

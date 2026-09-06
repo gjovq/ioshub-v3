@@ -19,6 +19,7 @@ import {
   teamLabel,
 } from '@/lib/format';
 import {
+  buildLiveTimeline,
   buildTimeline,
   playersBySide,
   shotEvents,
@@ -757,12 +758,17 @@ function LivePanel({
 }) {
   const endpoint = serverEndpointFromToken(state.matchDataToken);
   const password = serverPassword(match.server?.name);
+  const liveTimeline = buildLiveTimeline(state.matchEvents);
+  const liveShots = (state.matchEvents ?? []).filter(
+    (e) =>
+      ['GOAL', 'MISS', 'SAVE', 'OWN GOAL'].includes(e.event) && e.startPosition != null,
+  );
 
   return (
     <section>
       <SectionHeader
         title="Live statistics"
-        subtitle={`${state.matchPeriod} · ${clock(state.matchSeconds)} played`}
+        subtitle={`${state.matchPeriod} · ${clock(state.matchSeconds)} · ${state.serverPlayerCount} players on`}
       />
       <Card className="divide-y divide-[var(--line)]">
         <div className="grid grid-cols-3 items-center px-4 py-4 text-center sm:py-5">
@@ -789,23 +795,33 @@ function LivePanel({
           </div>
         </div>
 
+        {liveTimeline.length > 0 && (
+          <div className="p-4 sm:p-5">
+            <Timeline events={liveTimeline} homeColor={homeColor} awayColor={awayColor} />
+          </div>
+        )}
+
         <div className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <Lineup title={state.teamNameHome} color={homeColor} rows={state.teamLineupHome} />
           <Lineup title={state.teamNameAway} color={awayColor} rows={state.teamLineupAway} />
         </div>
 
-        {(state.matchEvents?.length ?? 0) > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-4 py-3">
-            {(state.matchEvents ?? [])
-              .filter((e) => e.event === 'GOAL' || e.event === 'OWN GOAL')
-              .map((e, i) => (
-                <span
-                  key={i}
-                  className="tabular rounded bg-white/[0.05] px-1.5 py-0.5 text-[10px] text-chalk-400"
-                >
-                  ⚽ {Math.round(e.second / 60)}&apos; {e.team}
-                </span>
-              ))}
+        {liveShots.length > 0 && (
+          <div className="p-4">
+            <ShotMap
+              shots={liveShots.map((e) => ({
+                ...e,
+                playerName: e.player1Name ?? 'Unknown',
+                isGoal: e.event === 'GOAL',
+                minute: Math.max(1, Math.round(e.second / 60)),
+              }))}
+              fieldMin={{ x: -4200, y: -2400 }}
+              fieldMax={{ x: 4200, y: 2400 }}
+              homeColor={homeColor}
+              awayColor={awayColor}
+              homeName={state.teamNameHome}
+              awayName={state.teamNameAway}
+            />
           </div>
         )}
 
