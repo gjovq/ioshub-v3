@@ -12,6 +12,8 @@ export type Shot = {
   team: 'home' | 'away';
   startPosition: Vec2 | null;
   bodyPart?: number;
+  /** which period the shot happened in, used to account for end swaps */
+  period?: string;
 };
 
 /**
@@ -20,9 +22,15 @@ export type Shot = {
  * expectedGoals stat is only in aggregate stat arrays, never on the event
  * itself.
  */
-function estimateXg(p: Vec2, team: 'home' | 'away', field: { halfX: number; halfY: number }): number {
-  // goal mouth centre of the team's attacking end
-  const goalY = team === 'home' ? field.halfY : -field.halfY;
+function estimateXg(
+  p: Vec2,
+  team: 'home' | 'away',
+  field: { halfX: number; halfY: number },
+  swapped: boolean,
+): number {
+  // goal mouth centre of the team's attacking end; teams swap ends at half-time
+  const attackingEnd = team === 'home' ? (swapped ? -1 : 1) : swapped ? 1 : -1;
+  const goalY = attackingEnd * field.halfY;
   // normalised offsets from the goal mouth: 1 unit = half pitch width/length
   const dx = p.x / field.halfX;
   const dy = (p.y - goalY) / (field.halfY * 2);
@@ -69,20 +77,26 @@ export function ShotMap({
   const H = 240;
   const spanX = Math.max(1, fieldMax.x - fieldMin.x);
   const spanY = Math.max(1, fieldMax.y - fieldMin.y);
+  // teams swap ends at half-time; shots after the first half attack the other goal
+  const secondHalf = (s: Shot) => /SECOND|2ND|2nd/i.test(s.period ?? '');
 
   const plotted = shots
     .map((s, i) => {
       if (!s.startPosition) return null;
       const p = s.startPosition;
+      const swapped = secondHalf(s);
       // -1..1 across the full pitch, -1..1 along it (top = home attack)
       const nx = Math.max(-1, Math.min(1, (2 * (p.x - fieldMin.x)) / spanX - 1));
-      const ny = Math.max(-1, Math.min(1, (2 * (p.y - fieldMin.y)) / spanY - 1));
+      // mirror vertically in the second half so each team's shots stay on its
+      // attacking end of the rendered pitch
+      const nyRaw = (2 * (p.y - fieldMin.y)) / spanY - 1;
+      const ny = Math.max(-1, Math.min(1, swapped ? -nyRaw : nyRaw));
       return {
         key: i,
         cx: W / 2 + (nx * (W / 2 - 10)),
-        // engine +y (home attack) maps to the top of the SVG
+        // engine +y (home first-half attack) maps to the top of the SVG
         cy: H / 2 - (ny * (H / 2 - 10)),
-        xg: estimateXg(p, s.team, { halfX: spanX / 2, halfY: spanY / 2 }),
+        xg: estimateXg(p, s.team, { halfX: spanX / 2, halfY: spanY / 2 }, swapped),
         shot: s,
       };
     })

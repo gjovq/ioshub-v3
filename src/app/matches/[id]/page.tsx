@@ -854,6 +854,7 @@ function LivePanel({
                 isGoal: e.event === 'GOAL',
                 minute: Math.max(1, Math.round(e.second / 60)),
                 bodyPart: e.bodyPart,
+                period: e.period,
               }))}
               // standard engine pitch; live events carry no field bounds
               fieldMin={{ x: -1554, y: -2406 }}
