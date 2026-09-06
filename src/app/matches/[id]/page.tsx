@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { CompareBar, SplitGauge } from '@/components/compare-bar';
 import { ShotMap } from '@/components/shot-map';
 import { TeamBadge } from '@/components/team-badge';
-import { Badge, Card, EmptyState, SectionHeader } from '@/components/ui';
+import { Badge, Card, EmptyState, LiveDot, SectionHeader } from '@/components/ui';
 import { getLiveScore, getPlayerOfTheMatch, safe } from '@/lib/api';
 import { loadMatch, requireEntity } from '@/lib/entities';
 import { BODY_PART_LABEL, POSITION_GROUP_LABEL } from '@/lib/enums';
@@ -29,6 +29,7 @@ import {
   type SidePlayer,
   type TimelineEvent,
 } from '@/lib/match-analysis';
+import type { LiveScoreState } from '@/lib/types';
 import { connectLink, serverEndpointFromToken, serverPassword } from '@/lib/servers';
 import type { Match } from '@/lib/types';
 
@@ -73,6 +74,7 @@ export default async function MatchPage({ params }: { params: Params }) {
       <Scoreboard
         match={match}
         score={score}
+        live={live?.item2 ?? null}
         homeColor={homeColor}
         awayColor={awayC}
         timeline={timeline}
@@ -371,12 +373,14 @@ function Breadcrumbs({ match }: { match: Match }) {
 function Scoreboard({
   match,
   score,
+  live,
   homeColor,
   awayColor,
   timeline,
 }: {
   match: Match;
   score: { home: number; away: number } | null;
+  live: LiveScoreState | null;
   homeColor: string;
   awayColor: string;
   timeline: TimelineEvent[];
@@ -396,6 +400,13 @@ function Scoreboard({
       />
       <div className="p-5 sm:p-8">
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
+          {live && (
+            <Badge tone="live">
+              <LiveDot />
+              <span className="tabular">{clock(live.matchSeconds)}</span>
+              <span className="opacity-70">{live.matchPeriod.replace(' HALF', '')}</span>
+            </Badge>
+          )}
           {match.tournament ? (
             <Link href={`/tournaments/${match.tournament.id}`}>
               <Badge tone="warn">{match.tournament.name}</Badge>
@@ -411,7 +422,13 @@ function Scoreboard({
           <SideBlock team={match.teamHome} align="right" color={homeColor} />
 
           <div className="text-center">
-            {score ? (
+            {live ? (
+              <div className="tabular font-display text-4xl font-bold tracking-tight text-chalk-100 sm:text-6xl">
+                {live.matchGoalsHome}
+                <span className="mx-2 text-chalk-700 sm:mx-3">–</span>
+                {live.matchGoalsAway}
+              </div>
+            ) : score ? (
               <div className="tabular font-display text-4xl font-bold tracking-tight text-chalk-100 sm:text-6xl">
                 {score.home}
                 <span className="mx-2 text-chalk-700 sm:mx-3">–</span>
@@ -780,34 +797,10 @@ function LivePanel({
         subtitle={
           warmup
             ? 'Warm-up · kick-off imminent'
-            : `${state.matchPeriod} · ${clock(state.matchSeconds)} · ${state.serverPlayerCount} players on`
+            : `${state.serverPlayerCount} players on the server`
         }
       />
       <Card className="divide-y divide-[var(--line)]">
-        <div className="grid grid-cols-3 items-center px-4 py-4 text-center sm:py-5">
-          <div className="min-w-0 text-right">
-            <div className="truncate font-display text-sm font-bold text-chalk-100 sm:text-base">
-              {state.teamNameHome}
-            </div>
-            {state.teamCodeHome && (
-              <div className="label-xs mt-0.5">{state.teamCodeHome}</div>
-            )}
-          </div>
-          <div className="tabular font-display text-4xl font-bold text-chalk-100">
-            {state.matchGoalsHome}
-            <span className="mx-1.5 text-chalk-700">–</span>
-            {state.matchGoalsAway}
-          </div>
-          <div className="min-w-0 text-left">
-            <div className="truncate font-display text-sm font-bold text-chalk-100 sm:text-base">
-              {state.teamNameAway}
-            </div>
-            {state.teamCodeAway && (
-              <div className="label-xs mt-0.5">{state.teamCodeAway}</div>
-            )}
-          </div>
-        </div>
-
         {!warmup && (
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-4 py-4 sm:grid-cols-4">
             <SummaryStat

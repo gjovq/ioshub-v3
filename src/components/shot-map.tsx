@@ -15,21 +15,24 @@ export type Shot = {
 };
 
 /**
- * Rough xG estimate from shot distance and angle. Not an official model — the
- * engine's per-shot expectedGoals stat is only in aggregate stat arrays, never
- * on the event itself. Distance dominates; tight angle reduces the chance.
+ * Rough xG estimate from shot distance and angle to the *attacking* goal. Not
+ * an official model — the engine's per-shot expectedGoals stat is only in
+ * aggregate stat arrays, never on the event itself. Distance dominates; tight
+ * angle reduces the chance.
  */
 function estimateXg(p: Vec2, fieldHalfLength: number, fieldHalfWidth: number): number {
-  const d = Math.hypot(p.x / fieldHalfWidth, p.y / fieldHalfLength); // 0 = goal line centre
+  // distance from the goal at +halfLength (home's attacking end); for away
+  // shots (negative y) the mirrored distance is the same magnitude
+  const d = Math.hypot(p.x / fieldHalfWidth, p.y / fieldHalfLength);
   const angleFactor = Math.max(0.25, 1 - Math.abs(p.x) / (fieldHalfWidth * 1.6));
   return Math.max(0.01, Math.min(0.95, 0.75 * Math.exp(-1.35 * d) * angleFactor));
 }
 
 /**
- * Shot map. The engine's pitch runs -x..+x across and -y..+y along the length;
- * home attacks +y, away attacks -y. Both sides are mirrored onto one half so
- * every shot attacks the goal at the top. Shots are clickable: selecting one
- * shows shooter, event type, body part, minute and the estimated xG.
+ * Shot map on a full vertical pitch. The engine's pitch runs -x..+x across and
+ * -y..+y along the length; home attacks +y (top), away attacks -y (bottom).
+ * Every shot is plotted at its real position. Shots are clickable: selecting
+ * one shows shooter, event type, body part, minute and the estimated xG.
  */
 export function ShotMap({
   shots,
@@ -52,25 +55,22 @@ export function ShotMap({
 
   const W = 320;
   const H = 240;
-  const halfX = Math.max(1, (fieldMax.x - fieldMin.x) / 2);
-  const halfY = Math.max(1, (fieldMax.y - fieldMin.y) / 2);
+  const spanX = Math.max(1, fieldMax.x - fieldMin.x);
+  const spanY = Math.max(1, fieldMax.y - fieldMin.y);
 
   const plotted = shots
     .map((s, i) => {
       if (!s.startPosition) return null;
       const p = s.startPosition;
-      // mirror the away side so every shot attacks the top goal
-      const x = s.team === 'home' ? p.x : -p.x;
-      const y = s.team === 'home' ? p.y : -p.y;
-      // -1..1 across, 0..1 depth from own half towards the top goal
-      const nx = Math.max(-1, Math.min(1, x / halfX));
-      const ny = Math.max(0, Math.min(1, y / halfY));
+      // -1..1 across the full pitch, -1..1 along it (top = home attack)
+      const nx = Math.max(-1, Math.min(1, (2 * (p.x - fieldMin.x)) / spanX - 1));
+      const ny = Math.max(-1, Math.min(1, (2 * (p.y - fieldMin.y)) / spanY - 1));
       return {
         key: i,
         cx: W / 2 + (nx * (W / 2 - 10)),
-        // 0..1 depth maps to bottom (own half) .. top (goal)
-        cy: H - 8 - ny * (H - 30),
-        xg: estimateXg({ x, y }, halfY, halfX),
+        // engine +y (home attack) maps to the top of the SVG
+        cy: H / 2 - (ny * (H / 2 - 10)),
+        xg: estimateXg(p, spanY / 2, spanX / 2),
         shot: s,
       };
     })
@@ -87,15 +87,26 @@ export function ShotMap({
         <rect x="0" y="0" width={W} height={H} fill="rgba(34,197,94,0.035)" rx="6" />
         <g stroke="rgba(148,163,184,0.18)" strokeWidth="1" fill="none">
           <rect x="4" y="4" width={W - 8} height={H - 8} rx="4" />
+          {/* both penalty boxes and six-yard boxes */}
           <rect x={W / 2 - 66} y="4" width="132" height="52" />
           <rect x={W / 2 - 30} y="4" width="60" height="20" />
-          <circle cx={W / 2} cy="42" r="3" fill="rgba(148,163,184,0.35)" stroke="none" />
-          <path d={`M ${W / 2 - 40} 56 A 44 44 0 0 0 ${W / 2 + 40} 56`} />
+          <rect x={W / 2 - 66} y={H - 56} width="132" height="52" />
+          <rect x={W / 2 - 30} y={H - 24} width="60" height="20" />
+          <circle cx={W / 2} cy={H / 2} r="3" fill="rgba(148,163,184,0.35)" stroke="none" />
+          <circle cx={W / 2} cy={H / 2} r="30" />
           {/* halfway line */}
           <line x1="4" y1={H / 2} x2={W - 4} y2={H / 2} strokeDasharray="4 4" />
         </g>
-        {/* goal */}
+        {/* goals: home attacks top, away attacks bottom */}
         <rect x={W / 2 - 22} y="0" width="44" height="5" fill="rgba(226,232,240,0.5)" rx="1" />
+        <rect
+          x={W / 2 - 22}
+          y={H - 5}
+          width="44"
+          height="5"
+          fill="rgba(226,232,240,0.5)"
+          rx="1"
+        />
 
         {others.map((p) => (
           <circle
@@ -169,8 +180,8 @@ export function ShotMap({
         </button>
       ) : (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-chalk-500">
-          <LegendDot color={homeColor} label={homeName} />
-          <LegendDot color={awayColor} label={awayName} />
+          <span className="text-chalk-400">⬆ {homeName} attack</span>
+          <span className="text-chalk-400">⬇ {awayName} attack</span>
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full border-[1.5px] border-chalk-500" />
             attempt
@@ -186,16 +197,6 @@ export function ShotMap({
   );
 }
 
-/** bodyPart rides on the event; carry it through the plotted shot. */
 function bodyPartOf(shot: Shot): number {
   return shot.bodyPart ?? 0;
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-      <span className="max-w-[9rem] truncate">{label}</span>
-    </span>
-  );
 }
