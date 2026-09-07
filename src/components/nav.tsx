@@ -11,6 +11,7 @@ const NAV = [
   { href: '/tournaments', label: 'Tournaments' },
   { href: '/teams', label: 'Teams' },
   { href: '/players', label: 'Players' },
+  { href: '/scout', label: 'Scout' },
   { href: '/leaders', label: 'Leaderboards' },
 ];
 
