@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPlayerStatistics } from './api';
+import { configuredPositionStore } from './rating-history';
 import type { ScoutPlayer } from './scouting';
 import type { StatFilters } from './types';
 
@@ -28,19 +29,17 @@ async function fastStatistics(filters: StatFilters) {
 export async function loadScoutPlayers(scope: {
   period: number; region: number | null; minApps: number; minRating: number | null; division: DivisionKey;
 }): Promise<{ players: ScoutPlayer[]; teamNames: Record<number, string>; positionWarning: boolean }> {
-  // Do not block the route on complete all-time statistics plus 23 position
-  // queries. That work routinely exceeds Vercel's 300-second limit. Position
-  // evidence is intentionally unavailable in this fast view until a durable
-  // background index exists; no role is inferred from aggregate stats.
   const [statistics, teamNames] = await Promise.all([
     fastStatistics({ timePeriod: scope.period, regionId: scope.region,
       minimumAppearances: scope.minApps, minimumRating: scope.minRating }),
     Promise.resolve({} as Record<number, string>),
   ]);
   const eligible = statistics;
+  const positionStore = configuredPositionStore();
+  const positions = positionStore ? await positionStore.get(eligible.map((p) => p.playerId)) : new Map();
   return {
-    players: eligible.map((p) => ({ ...p, steamID: null, scoutPosition: null })),
+    players: eligible.map((p) => ({ ...p, steamID: null, scoutPosition: positions.get(p.playerId) ?? null })),
     teamNames,
-    positionWarning: eligible.length > 0,
+    positionWarning: eligible.some((p) => !positions.has(p.playerId)),
   };
 }

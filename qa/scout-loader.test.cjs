@@ -112,6 +112,7 @@ function fixture(options = {}) {
   const data = compile('scout-data');
   const loader = compile('scout-loader', {
     'server-only': {}, 'next/cache': { unstable_cache }, './api': api, './scout-data': data,
+    './rating-history': { configuredPositionStore: () => null },
   });
   return { ...loader, calls };
 }
