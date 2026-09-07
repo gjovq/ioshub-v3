@@ -8,3 +8,6 @@ build/
 next-env.d.ts
 qa/shots/
 .DS_Store
+
+.vercel
+.env*
