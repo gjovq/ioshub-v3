@@ -285,6 +285,8 @@ export function getPlayerStatistics(args: {
   } = args;
   return call<Paged<PlayerStatistics>>('/api/player-statistics', {
     body: { page, pageSize, sortBy, sortOrder, filters: { timePeriod: 0, ...filters } },
+    // Large pages used by Scout opt out via revalidate=0. This avoids
+    // Next's 2 MB data-cache limit while preserving caching for normal pages.
     revalidate,
     // All-time aggregates are computed live upstream and measured 18-100s.
     timeoutMs,
