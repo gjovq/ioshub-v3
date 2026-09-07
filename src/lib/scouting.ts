@@ -1,128 +1,226 @@
 import type { PlayerStatistics } from './types';
 
-/**
- * Scouting maths. Everything here is computed client-side from the aggregate
- * PlayerStatistics the API returns — no upstream endpoint provides percentiles,
- * so normalisation references are hand-tuned against the live leaderboard
- * distribution (see REFERENCE below).
- */
+export type PositionGroup = 'GK' | 'DEF' | 'MID' | 'ATT';
 
-/** Per-90 or per-match rates are what matter when comparing players. */
-export interface ScoutProfile {
-  label: string;
-  /** normalised 0..1 against REFERENCE */
-  value: number;
-  /** raw number behind the normalised value, shown in tooltips */
-  raw: number;
+export interface ScoutPlayer extends PlayerStatistics {
+  /** Most-played recorded position, supplied by the data layer; never inferred. */
+  scoutPosition: {
+    name: string;
+    group: PositionGroup;
+    secondsPlayed: number;
+    /** Fraction of recorded position time (0..1). */
+    share: number;
+  } | null;
 }
 
-/**
- * Reference maxima for normalisation, set to roughly the 95th percentile of
- * each rate across all positions. A value of 1.0 on an axis means "elite, top
- * few percent of the hub" — deliberately harsh so shapes differentiate.
- */
-const REFERENCE = {
-  goalsPerMatch: 1.1,
-  assistsPerMatch: 0.9,
-  shotsPerMatch: 4.5,
-  passAccuracy: 0.92, // fraction
-  keyPassesPerMatch: 1.6,
-  chancesPerMatch: 1.8,
-  interceptionsPerMatch: 4.5,
-  tacklesPerMatch: 2.2,
-  savesPerMatch: 6.0,
-  savePct: 0.78, // fraction
-  distancePerMatch: 7.5, // km
-  discipline: 0.9, // fouls per match inverted
-  winRate: 75, // %
-  xgPerMatch: 0.95,
-} as const;
-
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-
-function perMatch(total: number, apps: number): number {
-  return apps > 0 ? total / apps : 0;
-}
-
-/** Keepers are judged on a different hexagon to everyone else. */
-export function isKeeper(p: PlayerStatistics): boolean {
-  // Keepers rack up saves and rarely score; heuristics on the aggregate.
-  return (
-    p.keeperSaves > 0 &&
-    p.keeperSaves / Math.max(1, p.appearances) > 1.5 &&
-    p.goals / Math.max(1, p.appearances) < 0.25
-  );
-}
-
-/** Six-axis hexagon profile, shaped by position. */
-export function hexagonAxes(p: PlayerStatistics): ScoutProfile[] {
-  const apps = Math.max(1, p.appearances);
-  const r = REFERENCE;
-
-  if (isKeeper(p)) {
-    return [
-      { label: 'Saves', value: clamp01(perMatch(p.keeperSaves, apps) / r.savesPerMatch), raw: perMatch(p.keeperSaves, apps) },
-      { label: 'Save %', value: clamp01((p.keeperSavePercentage ?? 0) / r.savePct), raw: p.keeperSavePercentage ?? 0 },
-      { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / 100 / r.passAccuracy), raw: p.passCompletionPercentageAverage },
-      { label: 'Clean sheets', value: clamp01(1 - perMatch(p.goalsConceded, apps) / 3), raw: perMatch(p.goalsConceded, apps) },
-      { label: 'Consistency', value: clamp01(p.winPercentage / r.winRate), raw: p.winPercentage },
-      { label: 'Volume', value: clamp01(p.appearances / 100), raw: p.appearances },
-    ];
-  }
-
-  return [
-    { label: 'Goals', value: clamp01(perMatch(p.goals, apps) / r.goalsPerMatch), raw: perMatch(p.goals, apps) },
-    { label: 'Assists', value: clamp01(perMatch(p.assists, apps) / r.assistsPerMatch), raw: perMatch(p.assists, apps) },
-    { label: 'Shooting', value: clamp01(perMatch(p.shots, apps) / r.shotsPerMatch), raw: perMatch(p.shots, apps) },
-    { label: 'Passing', value: clamp01((p.passCompletionPercentageAverage / 100) / r.passAccuracy), raw: p.passCompletionPercentageAverage },
-    { label: 'Creating', value: clamp01(perMatch(p.keyPasses + p.chancesCreated, apps) / (r.keyPassesPerMatch + r.chancesPerMatch)), raw: perMatch(p.keyPasses + p.chancesCreated, apps) },
-    { label: 'Defending', value: clamp01(perMatch(p.interceptions, apps) / r.interceptionsPerMatch), raw: perMatch(p.interceptions, apps) },
-  ];
-}
-
-/**
- * Scout heatmap score: 0..100, "how interesting is this player right now".
- * Blends output (goals+assists), progression (passing+creation), involvement
- * (minutes share), winning and availability, weighted by what a scout cares
- * about: output and creation dominate; discipline dings slightly.
- */
-export function scoutScore(p: PlayerStatistics): number {
-  const apps = Math.max(1, p.appearances);
-  const g = perMatch(p.goals, apps);
-  const a = perMatch(p.assists, apps);
-  const kp = perMatch(p.keyPasses + p.chancesCreated, apps);
-  const pass = (p.passCompletionPercentageAverage / 100) / REFERENCE.passAccuracy;
-  const win = p.winPercentage / REFERENCE.winRate;
-  const mins = clamp01(p.secondsPlayed / Math.max(1, apps) / (90 * 60)); // full-match share
-  const discipline = clamp01(1 - perMatch(p.fouls + p.yellowCards + p.redCards * 3, apps) / 4);
-
-  const score =
-    0.30 * clamp01((g / REFERENCE.goalsPerMatch + a / REFERENCE.assistsPerMatch) / 1.6) +
-    0.22 * clamp01(kp / (REFERENCE.keyPassesPerMatch + REFERENCE.chancesPerMatch)) +
-    0.18 * clamp01(pass) +
-    0.12 * clamp01(win) +
-    0.10 * mins +
-    0.08 * discipline;
-
-  return Math.round(clamp01(score) * 100);
-}
-
-/** Position group from PITCH_POSITIONS conventions in the API. */
-export function positionGroupOfStats(p: PlayerStatistics): 'GK' | 'DEF' | 'MID' | 'ATT' | 'MIX' {
-  if (isKeeper(p)) return 'GK';
-  const apps = Math.max(1, p.appearances);
-  const g = perMatch(p.goals, apps);
-  const int = perMatch(p.interceptions, apps);
-  if (g > 0.45) return 'ATT';
-  if (int > 2.2) return 'DEF';
-  if (g > 0.15 || perMatch(p.assists, apps) > 0.25) return 'MID';
-  return 'MIX';
-}
-
-export const POSITION_COLORS: Record<string, string> = {
+export const POSITION_COLORS: Record<PositionGroup, string> = {
   GK: '#38bdf8',
   DEF: '#a78bfa',
   MID: '#22c55e',
   ATT: '#f97316',
-  MIX: '#94a3b8',
 };
+
+export function primaryPosition(p: ScoutPlayer): PositionGroup | null {
+  return p.scoutPosition?.group ?? null;
+}
+
+/** Midrank within finite observations; ties (including a singleton) are neutral. */
+export function percentileOf(
+  value: number,
+  values: readonly number[],
+  lowerIsBetter = false,
+): number | null {
+  if (!Number.isFinite(value)) return null;
+  let count = 0;
+  let below = 0;
+  let equal = 0;
+  for (const observation of values) {
+    if (!Number.isFinite(observation)) continue;
+    count++;
+    if (observation < value) below++;
+    if (observation === value) equal++;
+  }
+  if (count === 0) return null;
+  const rank = ((below + equal / 2) / count) * 100;
+  return Math.max(0, Math.min(100, lowerIsBetter ? 100 - rank : rank));
+}
+
+function nonnegative(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function fraction(value: unknown): number | null {
+  const valid = nonnegative(value);
+  return valid !== null && valid <= 1 ? valid : null;
+}
+
+function ratio(numerator: unknown, denominator: unknown): number | null {
+  const n = nonnegative(numerator);
+  const d = nonnegative(denominator);
+  return n !== null && d !== null && d > 0 ? nonnegative(n / d) : null;
+}
+
+/** Percentage fields are fractions, never values to divide by 100. */
+function accuracy(reported: unknown, completed: unknown, attempts: unknown): number | null {
+  const count = nonnegative(attempts);
+  if (count === null || count === 0) return null;
+  return fraction(reported) ?? fraction(ratio(completed, count));
+}
+
+export function passAccuracy(p: PlayerStatistics): number | null {
+  return accuracy(p.passCompletionPercentageAverage, p.passesCompleted, p.passes);
+}
+
+function saveAccuracy(p: PlayerStatistics): number | null {
+  const saves = nonnegative(p.keeperSaves);
+  const conceded = nonnegative(p.goalsConceded);
+  if (saves === null || conceded === null) return null;
+  return accuracy(p.keeperSavePercentage, saves, saves + conceded);
+}
+
+export interface ScoutAxis {
+  label: string;
+  /** Per-appearance rate, or a 0..1 fraction for percent units. */
+  raw: number | null;
+  /** Same recorded position-group midrank (0..100), not a global rank. */
+  pct: number | null;
+  unit: 'rate' | 'percent';
+  lowerIsBetter: boolean;
+}
+
+interface AxisDefinition {
+  label: string;
+  unit: ScoutAxis['unit'];
+  lowerIsBetter: boolean;
+  weight: number;
+  value: (p: PlayerStatistics) => number | null;
+}
+
+function rate(
+  label: string,
+  weight: number,
+  total: (p: PlayerStatistics) => unknown,
+  lowerIsBetter = false,
+): AxisDefinition {
+  return { label, weight, unit: 'rate', lowerIsBetter, value: (p) => ratio(total(p), p.appearances) };
+}
+
+function average(
+  label: string,
+  weight: number,
+  value: (p: PlayerStatistics) => unknown,
+): AxisDefinition {
+  return {
+    label, weight, unit: 'rate', lowerIsBetter: false,
+    value: (p) => nonnegative(p.appearances) !== null && p.appearances > 0 ? nonnegative(value(p)) : null,
+  };
+}
+
+function percent(
+  label: string,
+  weight: number,
+  value: AxisDefinition['value'],
+): AxisDefinition {
+  return { label, weight, unit: 'percent', lowerIsBetter: false, value };
+}
+
+// Transparent role-specific product weights, not learned or calibrated ratings.
+// Every role has six distinct football axes; weights in each role sum to 1.
+const ROLE_AXES: Record<PositionGroup, readonly AxisDefinition[]> = {
+  GK: [
+    rate('Saves', 0.30, (p) => p.keeperSaves),
+    percent('Save %', 0.35, saveAccuracy),
+    rate('Conceded', 0.15, (p) => p.goalsConceded, true),
+    percent('Passing', 0.10, passAccuracy),
+    average('Catches', 0.05, (p) => p.keeperSavesCaughtAverage),
+    percent('Winning', 0.05, (p) => accuracy(p.winPercentage, p.wins, p.appearances)),
+  ],
+  DEF: [
+    rate('Interceptions', 0.30, (p) => p.interceptions),
+    average('Tackles', 0.25, (p) => p.slidingTacklesCompletedAverage),
+    rate('Conceded', 0.15, (p) => p.goalsConceded, true),
+    percent('Passing', 0.15, passAccuracy),
+    rate('Key passes', 0.10, (p) => p.keyPasses),
+    rate('Fouls', 0.05, (p) => p.fouls, true),
+  ],
+  MID: [
+    rate('Key passes', 0.25, (p) => p.keyPasses),
+    rate('Chances', 0.20, (p) => p.chancesCreated),
+    rate('Assists', 0.20, (p) => p.assists),
+    percent('Passing', 0.20, passAccuracy),
+    rate('Interceptions', 0.10, (p) => p.interceptions),
+    rate('Goals', 0.05, (p) => p.goals),
+  ],
+  ATT: [
+    rate('Goals', 0.35, (p) => p.goals),
+    percent('Conversion', 0.20, (p) => accuracy(p.shotConversionPercentage, p.goals, p.shots)),
+    percent('Shot accuracy', 0.15, (p) => accuracy(p.shotAccuracyPercentage, p.shotsOnGoal, p.shots)),
+    rate('Shots', 0.10, (p) => p.shots),
+    rate('Assists', 0.10, (p) => p.assists),
+    rate('Key passes', 0.10, (p) => p.keyPasses),
+  ],
+};
+
+const MIN_PEERS = 5;
+
+function roleValues(group: PositionGroup, cohort: readonly ScoutPlayer[]): number[][] {
+  const peers = cohort.filter((p) => primaryPosition(p) === group);
+  return ROLE_AXES[group].map((axis) => peers
+    .map((p) => axis.value(p))
+    .filter((value): value is number => value !== null && Number.isFinite(value)));
+}
+
+function axesFor(p: ScoutPlayer, group: PositionGroup, values: number[][]): ScoutAxis[] {
+  return ROLE_AXES[group].map((axis, index) => {
+    const raw = axis.value(p);
+    return {
+      label: axis.label,
+      raw,
+      pct: raw === null || values[index].length < MIN_PEERS
+        ? null
+        : percentileOf(raw, values[index], axis.lowerIsBetter),
+      unit: axis.unit,
+      lowerIsBetter: axis.lowerIsBetter,
+    };
+  });
+}
+
+/**
+ * Six role axes, or [] when the recorded role is unknown. Pass the full fetched
+ * cohort, BEFORE client-side name filtering. Only same-role observations count;
+ * each axis needs at least five valid observations before showing a percentile.
+ */
+export function hexagonFor(p: ScoutPlayer, cohort: ScoutPlayer[]): ScoutAxis[] {
+  const group = primaryPosition(p);
+  return group === null ? [] : axesFor(p, group, roleValues(group, cohort));
+}
+
+/**
+ * Weighted mean of same-role axis percentiles, NOT a percentile of the composite
+ * and NOT a global rank. Missing axes are omitted and available weights are
+ * renormalized; no supported axes or an unknown role produces null. Compute on
+ * the full fetched cohort before applying any client-side name filter.
+ */
+export function heatScores(players: ScoutPlayer[]): Map<number, number | null> {
+  const values = new Map<PositionGroup, number[][]>();
+  const out = new Map<number, number | null>();
+  for (const p of players) {
+    const group = primaryPosition(p);
+    if (group === null) {
+      out.set(p.playerId, null);
+      continue;
+    }
+    if (!values.has(group)) values.set(group, roleValues(group, players));
+    const axes = axesFor(p, group, values.get(group)!);
+    let weighted = 0;
+    let weights = 0;
+    axes.forEach((axis, index) => {
+      if (axis.pct === null) return;
+      const weight = ROLE_AXES[group][index].weight;
+      weighted += axis.pct * weight;
+      weights += weight;
+    });
+    out.set(p.playerId, weights > 0 ? Math.max(0, Math.min(100, weighted / weights)) : null);
+  }
+  return out;
+}

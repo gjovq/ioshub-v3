@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ActivityStrip, PerformanceChart, ResultsBar } from '@/components/charts';
+import { RatingHistoryChart } from '@/components/rating-history-chart';
 import { TeamBadge } from '@/components/team-badge';
 import {
   Badge,
@@ -32,6 +33,7 @@ import {
   teamLabel,
 } from '@/lib/format';
 import type { SquadEntry } from '@/lib/types';
+import { configuredRatingStore } from '@/lib/rating-history';
 
 export const revalidate = 300;
 
@@ -333,6 +335,7 @@ async function TrendSection({ playerId }: { playerId: number }) {
     safe(getPlayerPerformance(playerId, 'monthly')),
     safe(getPlayerAppearanceTotals(playerId)),
   ]);
+  const ratingHistory = await configuredRatingStore()?.list(playerId) ?? [];
 
   return (
     <>
@@ -350,6 +353,12 @@ async function TrendSection({ playerId }: { playerId: number }) {
           <Card className="p-4 sm:p-5">
             <ActivityStrip data={appearances} />
           </Card>
+        </section>
+      )}
+      {ratingHistory.length > 1 && (
+        <section className="mt-8">
+          <SectionHeader title="Rating history" subtitle="Stored observations" />
+          <Card className="p-4 sm:p-5"><RatingHistoryChart points={ratingHistory} /></Card>
         </section>
       )}
     </>

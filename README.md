@@ -32,6 +32,33 @@ and read-only.
 | `/tournaments` | Active and past competitions, grouped by organiser |
 | `/tournaments/[id]` | Standings tables, fixtures, results, entrants, stages, champion |
 | `/leaders` | 11 leaderboards (8 player, 3 team), filterable by period, region and minimum appearances |
+| `/scout` | Searchable, paginated player list with current-division filters, recorded-position groups, role-relative percentiles, radar profiles and illustrative pitch zones |
+
+### Scouting (`/scout`)
+
+- **Division** uses current squad membership, excluding departed or pending entries.
+  Statistics follow the selected period, region and thresholds, including substitutes.
+- **Most-played position** means the unique individual position with the most
+  all-time recorded playing time, then mapped to GK, DEF, MID or ATT. Profile
+  labels, goals and saves never determine a player's role.
+- The server retrieves complete statistics pages and constructs a shared position
+  index from all 23 canonical position filters. Each player's positional seconds
+  must reconcile with their unfiltered all-time total. Ties, missing queries and
+  inconsistent totals remain unclassified, not guessed. The first refresh can be slow.
+- **Percentiles** compare only players in the same recorded group within the
+  selected population. Each axis needs five valid observations. Ties use midranks;
+  search, position chips and list pagination do not change the comparison sample.
+- **Scout heat** is a weighted average of available axis percentiles, not a global
+  rank or a percentile of the combined score. The expanded profile explains the
+  role weights and any missing metrics. Passing fractions such as `0.85` display
+  as `85.0%`.
+- **Pitch zones are illustrative**, using exact-role templates and aggregate-stat
+  percentiles. They do not show tracked movement or time spent in an area.
+
+Live verification of the full 23-position aggregate reconciliation was blocked
+by upstream connection failures during this change. Regression tests verify the
+data contract with synthetic fixtures; the loader rejects unreconciled evidence
+at runtime rather than treating unavailable positions as zero minutes.
 
 ### Match analysis (`/matches/[id]`)
 
@@ -134,6 +161,26 @@ node qa/audit.cjs      # contrast, overflow, broken images, tap targets
 node qa/interact.cjs   # search, filters, sorting, pagination, mobile nav
 node qa/shots.cjs      # desktop + mobile screenshots of every page
 ```
+
+Scouting regression tests need no running server or network:
+
+```bash
+node --test qa/scouting-math.test.cjs qa/scout-data.test.cjs qa/scout-loader.test.cjs qa/scout-presentation.test.cjs
+```
+
+After a production build, `node qa/scout-browser.cjs` serves the actual scouting
+components with synthetic players and built CSS at `http://127.0.0.1:3102`.
+This harness is separate from the production API and is not live-data validation.
+
+### Optional rating history
+
+IOSoccer exposes the current player rating, but not a historical series. To store
+snapshots on Vercel, create the table in `docs/rating-history.sql`, configure
+`POSTGRES_URL` and `CRON_SECRET`, then call `POST /api/rating-snapshots` with
+`Authorization: Bearer <CRON_SECRET>` and a JSON body such as
+`{"playerIds":[123,456]}`. The endpoint accepts at most 100 IDs per run and the
+player page displays the chart after at least two snapshots exist. Without the
+database configuration, no local-disk writes are attempted.
 
 Point them at a running server (`npx next start -p 3100` by default).
 

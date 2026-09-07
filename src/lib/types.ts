@@ -306,6 +306,30 @@ export interface LiveScoreState {
   allPlayers: unknown[] | null;
 }
 
+/** Snapshot returned by the server's match-data URL. It is not the API live-score shape. */
+export interface LiveServerSnapshot {
+  home: LiveServerSide;
+  away: LiveServerSide;
+  server: { timestamp: number; match_state: string };
+  goals_and_assists: {
+    home_goals: Record<string, number>;
+    away_goals: Record<string, number>;
+    home_assists: Record<string, number>;
+    away_assists: Record<string, number>;
+  };
+}
+
+export interface LiveServerSide {
+  stats: Record<string, number>;
+  players: {
+    id: string;
+    name: string;
+    goals: number;
+    assists: number;
+    field_position: number;
+  }[];
+}
+
 /** live-scores returns C# tuples serialised as item1/item2 */
 export interface LiveScoreEntry {
   item1: Match;

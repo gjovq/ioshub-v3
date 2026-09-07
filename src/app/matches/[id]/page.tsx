@@ -4,7 +4,7 @@ import { CompareBar, SplitGauge } from '@/components/compare-bar';
 import { ShotMap } from '@/components/shot-map';
 import { TeamBadge } from '@/components/team-badge';
 import { Badge, Card, EmptyState, LiveDot, SectionHeader } from '@/components/ui';
-import { getLiveScore, getPlayerOfTheMatch, safe } from '@/lib/api';
+import { getLiveScore, getLiveServerSnapshot, getPlayerOfTheMatch, safe } from '@/lib/api';
 import { loadMatch, requireEntity } from '@/lib/entities';
 import { BODY_PART_LABEL, POSITION_GROUP_LABEL } from '@/lib/enums';
 import {
@@ -51,10 +51,12 @@ export default async function MatchPage({ params }: { params: Params }) {
   const matchId = Number(id);
   const match = await requireEntity(loadMatch(matchId));
 
-  const potm = match.playerOfTheMatchId ? await safe(getPlayerOfTheMatch(matchId)) : null;
   const md = match.matchStatistics?.matchData ?? null;
   const score = matchScore(match);
-  const live = md ? null : await safe(getLiveScore(matchId));
+  const [potm, live] = await Promise.all([
+    match.playerOfTheMatchId ? safe(getPlayerOfTheMatch(matchId)) : Promise.resolve(null),
+    md ? Promise.resolve(null) : safe(getLiveScore(matchId)),
+  ]);
 
   const homeColor = safeColor(match.teamHome?.color, '#2563eb');
   const awayColor = safeColor(match.teamAway?.color, '#dc2626');
@@ -768,7 +770,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function LivePanel({
+async function LivePanel({
   match,
   state,
   homeColor,
@@ -780,6 +782,9 @@ function LivePanel({
   awayColor: string;
 }) {
   const endpoint = serverEndpointFromToken(state.matchDataToken);
+  const serverSnapshot = state.matchDataUrl
+    ? await getLiveServerSnapshot(state.matchDataUrl, endpoint)
+    : null;
   const password = serverPassword(match.server?.name);
   const warmup = state.matchPeriod === 'WARM-UP';
   const liveTimeline = buildLiveTimeline(state.matchEvents);
@@ -840,6 +845,8 @@ function LivePanel({
           </div>
         )}
 
+        {serverSnapshot && <ServerSnapshot snapshot={serverSnapshot} homeColor={homeColor} awayColor={awayColor} />}
+
         <div className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <Lineup title={state.teamNameHome} color={homeColor} rows={state.teamLineupHome} />
           <Lineup title={state.teamNameAway} color={awayColor} rows={state.teamLineupAway} />
@@ -887,6 +894,50 @@ function LivePanel({
         )}
       </Card>
     </section>
+  );
+}
+
+function ServerSnapshot({
+  snapshot,
+  homeColor,
+  awayColor,
+}: {
+  snapshot: import('@/lib/types').LiveServerSnapshot;
+  homeColor: string;
+  awayColor: string;
+}) {
+  const rows = [
+    ['Passes', 'passes', (v: number) => String(v)],
+    ['Interceptions', 'interceptions', (v: number) => String(v)],
+    ['Saves', 'saves', (v: number) => String(v)],
+    ['Corners', 'corner_kicks', (v: number) => String(v)],
+    ['Goal kicks', 'goal_kicks', (v: number) => String(v)],
+    ['Possession', 'ball_possession', (v: number) => `${v}%`],
+  ] as const;
+  return (
+    <div className="px-4 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="font-display text-sm font-semibold text-chalk-200">Server match snapshot</h3>
+        <span className="text-[10px] text-chalk-600">{snapshot.server.match_state.replace(/^EBaseMatchStates_/, '')}</span>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+        <span className="truncate font-semibold" style={{ color: homeColor }}>Home</span>
+        <span />
+        <span className="truncate text-right font-semibold" style={{ color: awayColor }}>Away</span>
+        {rows.map(([label, key, format]) => {
+          const home = snapshot.home.stats[key];
+          const away = snapshot.away.stats[key];
+          return <div key={key} className="contents">
+            <span className="tabular text-right text-chalk-200">{format(home)}</span>
+            <span className="text-center text-[10px] text-chalk-600">{label}</span>
+            <span className="tabular text-chalk-200">{format(away)}</span>
+          </div>;
+        })}
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-chalk-500">
+        These values come from the linked server snapshot. They are separate from the hub API live event feed.
+      </p>
+    </div>
   );
 }
 

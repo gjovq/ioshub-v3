@@ -1,8 +1,10 @@
 import { createLimiter, withRetry } from './limiter';
+import { parseLiveServerSnapshot } from './live-server';
 import type {
   AppearanceTotal,
   Country,
   LiveScoreEntry,
+  LiveServerSnapshot,
   Match,
   MatchFilters,
   Paged,
@@ -164,12 +166,45 @@ export const getPlayerOfTheMatch = (id: number) =>
 
 export const getLiveScores = (regionId: number) =>
   call<LiveScoreEntry[]>(`/api/match/live-scores/${regionId}`, {
-    revalidate: 0,
+    // The client polls every 12–15 seconds. A short server cache prevents all
+    // visitors from fanning out to every region at the same instant.
+    revalidate: 5,
     timeoutMs: 12000,
   });
 
 export const getLiveScore = (matchId: number) =>
-  call<LiveScoreEntry>(`/api/match/${matchId}/live-score`, { revalidate: 0 });
+  call<LiveScoreEntry>(`/api/match/${matchId}/live-score`, { revalidate: 5, timeoutMs: 12000 });
+
+/** Fetch the optional server snapshot linked by a live-score response. */
+export async function getLiveServerSnapshot(
+  sourceUrl: string,
+  expectedEndpoint: string | null,
+): Promise<LiveServerSnapshot | null> {
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    const expectedHost = expectedEndpoint?.split(':')[0];
+    if (url.hostname !== 'iosoccer.com' && (!expectedHost || url.hostname !== expectedHost)) return null;
+  } catch {
+    return null;
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const response = await fetch(url, {
+      redirect: 'manual', signal: ctrl.signal, headers: { Accept: 'application/json', 'User-Agent': UA },
+      next: { revalidate: 5 },
+    });
+    if (!response.ok) return null;
+    const body: unknown = await response.json();
+    return parseLiveServerSnapshot(body);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // -------------------------------------------------------------- tournaments
 
@@ -188,12 +223,7 @@ export const getTournamentGroups = (id: number) =>
 export const getTournamentTeams = (id: number) =>
   call<Team[]>(`/api/tournaments/${id}/teams`, { revalidate: 300 });
 
-/**
- * Player statistics for one team. The upstream tournamentId filter on the
- * statistics endpoint is unreliable (returns empty for some live divisions),
- * so division scoping is done by resolving the division's teams and querying
- * per team instead.
- */
+/** Historical statistics for a team, not evidence of current squad membership. */
 export function getPlayerStatisticsForTeam(args: {
   teamId: number;
   pageSize?: number;
@@ -242,6 +272,7 @@ export function getPlayerStatistics(args: {
   sortOrder?: 'ASC' | 'DESC';
   filters?: StatFilters;
   revalidate?: number;
+  timeoutMs?: number;
 }) {
   const {
     page = 1,
@@ -250,12 +281,13 @@ export function getPlayerStatistics(args: {
     sortOrder = 'DESC',
     filters = {},
     revalidate = 300,
+    timeoutMs = 120000,
   } = args;
   return call<Paged<PlayerStatistics>>('/api/player-statistics', {
     body: { page, pageSize, sortBy, sortOrder, filters: { timePeriod: 0, ...filters } },
     revalidate,
     // All-time aggregates are computed live upstream and measured 18-100s.
-    timeoutMs: 120000,
+    timeoutMs,
     retry: false,
   });
 }
