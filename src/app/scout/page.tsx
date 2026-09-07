@@ -1,37 +1,112 @@
 import Link from 'next/link';
 import { ScoutList } from '@/components/scout-list';
 import { ErrorNote } from '@/components/ui';
-import { getRegions, safe } from '@/lib/api';
-import { DIVISIONS, loadScoutPlayers, type DivisionKey } from '@/lib/scout-loader';
+import {
+  getCurrentTournaments,
+  getPlayerStatistics,
+  getPlayerStatisticsForTeam,
+  getRegions,
+  getTournamentTeams,
+  safe,
+} from '@/lib/api';
+import type { PlayerStatistics, StatFilters } from '@/lib/types';
 
 export const revalidate = 300;
 export const metadata = { title: 'Scout' };
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
-const DEFAULTS = { period: 0, minApps: 5, div: 'all' };
+const PAGE_SIZE = 60;
+const DEFAULTS = { page: 1, sort: 'Rating', order: 'DESC', period: 0, minApps: 5 };
+
+/**
+ * Division tiers. Named after the hub's competition ladder; the current
+ * season's tournament and its team list are resolved at request time.
+ * Division scoping goes through team membership because the statistics
+ * endpoint's tournamentId filter is unreliable on live divisions.
+ */
+const DIVISIONS = [
+  { key: 'premier', label: 'Premier' },
+  { key: 'challenger', label: 'Challenger' },
+  { key: 'ascendant', label: 'Ascendant' },
+  { key: 'rising', label: 'Rising' },
+] as const;
+
+type DivisionKey = (typeof DIVISIONS)[number]['key'] | 'all';
+
+async function resolveDivisionTeamIds(): Promise<Record<string, number[]>> {
+  const tournaments = (await safe(getCurrentTournaments())) ?? [];
+  const map: Record<string, number[]> = {};
+  for (const d of DIVISIONS) {
+    const t = tournaments.find((x) => x.name.toLowerCase().startsWith(d.key));
+    if (!t) continue;
+    const teams = await safe(getTournamentTeams(t.id));
+    map[d.key] = (teams ?? []).map((tm) => tm.id);
+  }
+  return map;
+}
+
+/** Merge per-team result pages, de-duplicating players who appear twice. */
+function mergeTeamStats(pages: (PlayerStatistics[] | null)[]): PlayerStatistics[] {
+  const byId = new Map<number, PlayerStatistics>();
+  for (const page of pages) {
+    for (const p of page ?? []) {
+      const existing = byId.get(p.playerId);
+      if (!existing || p.appearances > existing.appearances) byId.set(p.playerId, p);
+    }
+  }
+  return [...byId.values()];
+}
 
 export default async function ScoutPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === 'string' ? (sp[k] as string) : undefined);
 
-  const period = [0, 31, 365].includes(Number(str('period'))) ? Number(str('period')) : 0;
-  const positive = (key: string) => {
-    const value = Number(str(key));
-    return Number.isFinite(value) && value > 0 ? value : undefined;
-  };
-  const region = positive('region');
-  const minApps = Math.max(1, Math.floor(positive('minApps') ?? DEFAULTS.minApps));
-  const minRating = positive('minRating');
-  const division: DivisionKey = DIVISIONS.some((d) => d.key === str('div'))
-    ? str('div') as DivisionKey : 'all';
-  const [data, regions] = await Promise.all([
-    safe(loadScoutPlayers({ period, region: region ?? null, minApps,
-      minRating: minRating ?? null, division })),
-    safe(getRegions()),
-  ]);
+  const page = Math.max(1, Number(str('page')) || 1);
+  const sort = str('sort') ?? DEFAULTS.sort;
+  const order = (str('order') === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
+  const period = Number(str('period') ?? DEFAULTS.period);
+  const region = str('region') ? Number(str('region')) : undefined;
+  const minApps = Number(str('minApps') ?? DEFAULTS.minApps);
+  const minRating = str('minRating') ? Number(str('minRating')) : undefined;
+  const pos = (str('pos') ?? 'all') as 'all' | 'GK' | 'DEF' | 'MID' | 'ATT';
+  const division = (str('div') ?? 'all') as DivisionKey;
 
-  const current = { period, region, minApps, minRating, div: division };
+  const divisionTeamIds = await resolveDivisionTeamIds();
+
+  const baseFilters: StatFilters = {
+    timePeriod: Number.isFinite(period) ? period : 0,
+    regionId: region ?? null,
+    minimumAppearances: Number.isFinite(minApps) && minApps > 0 ? minApps : null,
+    minimumRating: minRating ?? null,
+  };
+
+  let data: { items: PlayerStatistics[]; totalItems: number; totalPages: number; page: number } | null;
+  if (division !== 'all' && divisionTeamIds[division]?.length) {
+    // Division scope: query each member team and merge. The client list handles
+    // search/heat ordering, so fetch a generous page per team.
+    const pages = await Promise.all(
+      divisionTeamIds[division].map((teamId) =>
+        safe(getPlayerStatisticsForTeam({ teamId, pageSize: 200, filters: baseFilters })),
+      ),
+    );
+    const merged = mergeTeamStats(pages.map((pg) => pg?.items ?? null));
+    data = {
+      items: merged,
+      totalItems: merged.length,
+      totalPages: 1,
+      page: 1,
+    };
+  } else {
+    const res = await safe(
+      getPlayerStatistics({ page, pageSize: PAGE_SIZE, sortBy: sort, sortOrder: order, filters: baseFilters }),
+    );
+    data = res;
+  }
+
+  const regions = await safe(getRegions());
+
+  const current = { page, sort, order, period, region, minApps, minRating, pos, div: division };
   const qs = (over: Record<string, string | number | undefined>) =>
     buildQuery('/scout', current, over, DEFAULTS);
 
@@ -43,13 +118,8 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
         </h1>
         <p className="mt-1 text-sm text-chalk-500">
           {data
-            ? `${data.players.length.toLocaleString('en-GB')} eligible players, expand a row for the full profile`
+            ? `${data.totalItems.toLocaleString('en-GB')} players in scope — click a row for the full profile`
             : 'Filter by division, position and thresholds to find targets'}
-        </p>
-        <p className="mt-2 text-xs leading-relaxed text-chalk-500">
-          Division follows current squad membership. Statistics follow the selected period and region,
-          including substitutes. Most-played position uses all-time recorded minutes across all regions.
-          Search and position filters keep the same comparison group.
         </p>
       </header>
 
@@ -57,15 +127,30 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
         {/* divisions */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="label-xs hidden sm:inline">Division</span>
-          <Pill href={qs({ div: 'all' })} active={division === 'all'}>All</Pill>
-          {DIVISIONS.map((d) => (
+          <Pill href={qs({ div: 'all', page: 1 })} active={division === 'all'}>All</Pill>
+          {DIVISIONS.map((d) => {
+            const known = (divisionTeamIds[d.key]?.length ?? 0) > 0;
+            return (
               <Pill
                 key={d.key}
-                href={qs({ div: d.key })}
+                href={qs({ div: d.key, page: 1 })}
                 active={division === d.key}
+                dimmed={!known}
+                title={known ? undefined : 'Not in the current season'}
               >
                 {d.label}
               </Pill>
+            );
+          })}
+        </div>
+
+        {/* position */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="label-xs hidden sm:inline">Position</span>
+          {(['all', 'GK', 'DEF', 'MID', 'ATT'] as const).map((p) => (
+            <Pill key={p} href={qs({ pos: p, page: 1 })} active={pos === p}>
+              {p === 'all' ? 'All' : p}
+            </Pill>
           ))}
         </div>
 
@@ -78,18 +163,18 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
               { v: 365, l: 'Year' },
               { v: 31, l: 'Month' },
             ].map((t) => (
-              <Pill key={t.v} href={qs({ period: t.v })} active={period === t.v}>
+              <Pill key={t.v} href={qs({ period: t.v, page: 1 })} active={period === t.v}>
                 {t.l}
               </Pill>
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="label-xs hidden sm:inline">Region</span>
-            <Pill href={qs({ region: undefined })} active={region == null}>All</Pill>
+            <Pill href={qs({ region: undefined, page: 1 })} active={region == null}>All</Pill>
             {(regions ?? [])
               .filter((r) => r.matchCount > 0)
               .map((r) => (
-                <Pill key={r.regionId} href={qs({ region: r.regionId })} active={region === r.regionId}>
+                <Pill key={r.regionId} href={qs({ region: r.regionId, page: 1 })} active={region === r.regionId}>
                   {r.regionCode}
                 </Pill>
               ))}
@@ -97,38 +182,22 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="label-xs hidden sm:inline">Min apps</span>
             {[1, 5, 10, 25, 50].map((a) => (
-              <Pill key={a} href={qs({ minApps: a })} active={minApps === a}>
+              <Pill key={a} href={qs({ minApps: a, page: 1 })} active={minApps === a}>
                 {a}+
               </Pill>
             ))}
           </div>
         </div>
-        <form action="/scout" className="flex flex-wrap items-center gap-2 text-xs">
-          <input type="hidden" name="period" value={period} />
-          <input type="hidden" name="div" value={division} />
-          <input type="hidden" name="minApps" value={minApps} />
-          {region != null && <input type="hidden" name="region" value={region} />}
-          <label htmlFor="scout-min-rating" className="text-chalk-400">Minimum rating</label>
-          <input id="scout-min-rating" name="minRating" type="number" min="0" step="0.1"
-            defaultValue={minRating} className="w-20 rounded border border-[var(--line)] bg-pitch-950 px-2 py-1" />
-          <button type="submit" className="rounded border border-[var(--line)] px-2 py-1 hover:text-turf-400">Apply</button>
-        </form>
       </div>
 
       {!data ? (
-        <ErrorNote message="Could not load a complete scouting population or current division squads. Try again later; partial results are not ranked." />
-      ) : data.players.length === 0 ? (
+        <ErrorNote message="Could not load player statistics." />
+      ) : data.items.length === 0 ? (
         <p className="py-10 text-center text-sm text-chalk-500">
-          No players match these filters. Try a lower appearance threshold.
+          No players match these filters — try a lower appearance threshold.
         </p>
       ) : (
-        <>
-          {data.positionWarning && <p role="status" className="mb-3 rounded border border-[var(--line)] p-3 text-xs text-chalk-400">
-            Fast mode loaded the current statistics page. Recorded position history is not loaded in this request,
-            so players remain unclassified and do not receive position heat. A background index can enable role filters later.
-          </p>}
-          <ScoutList key={JSON.stringify(current)} players={data.players} teamNames={data.teamNames} />
-        </>
+        <ScoutList players={data.items} />
       )}
     </div>
   );
