@@ -188,6 +188,31 @@ export const getTournamentGroups = (id: number) =>
 export const getTournamentTeams = (id: number) =>
   call<Team[]>(`/api/tournaments/${id}/teams`, { revalidate: 300 });
 
+/**
+ * Player statistics for one team. The upstream tournamentId filter on the
+ * statistics endpoint is unreliable (returns empty for some live divisions),
+ * so division scoping is done by resolving the division's teams and querying
+ * per team instead.
+ */
+export function getPlayerStatisticsForTeam(args: {
+  teamId: number;
+  pageSize?: number;
+  filters?: StatFilters;
+}) {
+  const { teamId, pageSize = 200, filters = {} } = args;
+  return call<Paged<PlayerStatistics>>('/api/player-statistics', {
+    body: {
+      page: 1,
+      pageSize,
+      sortBy: 'Rating',
+      sortOrder: 'DESC',
+      filters: { timePeriod: 0, ...filters, teamId },
+    },
+    revalidate: 300,
+    timeoutMs: 60000,
+  });
+}
+
 export const getStandings = (groupId: number) =>
   call<Standing[]>(`/api/tournament-groups/${groupId}/standings`, { revalidate: 120 });
 
