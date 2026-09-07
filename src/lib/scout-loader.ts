@@ -17,7 +17,10 @@ async function allStatistics(filters: StatFilters) {
   return completePlayerPages((page) => getPlayerStatistics({
     page, pageSize: 1000, sortBy: 'SecondsPlayed', sortOrder: 'DESC',
     filters: { ...filters, includeSubstituteAppearances: true },
-    revalidate: 900, timeoutMs: 45000,
+    // A 1000-row response can exceed Next's 2 MB data-cache limit. The
+    // complete population is validated in memory and must not be cached as a
+    // serialized fetch result; smaller API calls keep their normal caches.
+    revalidate: 0, timeoutMs: 45000,
   }));
 }
 
