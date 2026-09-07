@@ -124,8 +124,8 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
       ) : (
         <>
           {data.positionWarning && <p role="status" className="mb-3 rounded border border-[var(--line)] p-3 text-xs text-chalk-400">
-            Some recorded-position histories are unavailable, tied, or do not reconcile with total playing time.
-            Those players stay unclassified and cannot enter a position filter or receive a heat score.
+            Fast mode loaded the current statistics page. Recorded position history is not loaded in this request,
+            so players remain unclassified and do not receive position heat. A background index can enable role filters later.
           </p>}
           <ScoutList key={JSON.stringify(current)} players={data.players} teamNames={data.teamNames} />
         </>
