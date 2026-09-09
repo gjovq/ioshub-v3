@@ -60,10 +60,12 @@ function mergeTeamStats(pages: (PlayerStatistics[] | null)[]): PlayerStatistics[
 }
 
 /**
- * Player IDs genuinely at a club right now: current, not pending, and not
- * trialists or players registered elsewhere on loan (role 3 "Loaned out").
- * Incoming loanees (role 2) ARE included — they actually play for this club,
- * which also keeps them out of their parent club's division.
+ * Player IDs genuinely at a club right now. The squad endpoint flags every
+ * entry with isPending=true (it is not a "pending transfer" signal), so the
+ * reliable filter is isCurrentTeam: players registered elsewhere on loan
+ * (role 3 "Loaned out") are flagged not-current and dropped here. Incoming
+ * loanees (role 2) stay current, so they appear at the club they actually play
+ * for and never in their parent club's division.
  */
 async function eligibleSquadPlayerIds(teamId: number): Promise<Set<number>> {
   const squad = (await safe(getTeamSquad(teamId))) ?? [];
@@ -72,7 +74,6 @@ async function eligibleSquadPlayerIds(teamId: number): Promise<Set<number>> {
       .filter(
         (s) =>
           s.playerTeam.isCurrentTeam &&
-          !s.playerTeam.isPending &&
           s.playerTeam.teamRole !== 0 && // Trialist
           s.playerTeam.teamRole !== 3, // Loaned out (registered elsewhere)
       )
