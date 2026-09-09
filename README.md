@@ -32,33 +32,28 @@ and read-only.
 | `/tournaments` | Active and past competitions, grouped by organiser |
 | `/tournaments/[id]` | Standings tables, fixtures, results, entrants, stages, champion |
 | `/leaders` | 11 leaderboards (8 player, 3 team), filterable by period, region and minimum appearances |
-| `/scout` | Searchable, paginated player list with current-division filters, recorded-position groups, role-relative percentiles, radar profiles and illustrative pitch zones |
+| `/scout` | Searchable, expandable player list with current-division filters, estimated-role groups, role-relative percentiles, radar profiles and illustrative pitch zones |
 
 ### Scouting (`/scout`)
 
 - **Division** uses current squad membership, excluding departed or pending entries.
   Statistics follow the selected period, region and thresholds, including substitutes.
-- **Most-played position** means the unique individual position with the most
-  all-time recorded playing time, then mapped to GK, DEF, MID or ATT. Profile
-  labels, goals and saves never determine a player's role.
-- The server retrieves complete statistics pages and constructs a shared position
-  index from all 23 canonical position filters. Each player's positional seconds
-  must reconcile with their unfiltered all-time total. Ties, missing queries and
-  inconsistent totals remain unclassified, not guessed. The first refresh can be slow.
-- **Percentiles** compare only players in the same recorded group within the
-  selected population. Each axis needs five valid observations. Ties use midranks;
-  search, position chips and list pagination do not change the comparison sample.
-- **Scout heat** is a weighted average of available axis percentiles, not a global
-  rank or a percentile of the combined score. The expanded profile explains the
-  role weights and any missing metrics. Passing fractions such as `0.85` display
-  as `85.0%`.
-- **Pitch zones are illustrative**, using exact-role templates and aggregate-stat
-  percentiles. They do not show tracked movement or time spent in an area.
-
-Live verification of the full 23-position aggregate reconciliation was blocked
-by upstream connection failures during this change. Regression tests verify the
-data contract with synthetic fixtures; the loader rejects unreconciled evidence
-at runtime rather than treating unavailable positions as zero minutes.
+- **Roles are estimated** from aggregate statistics, not recorded positions. The
+  loader intentionally stays fast and bounded (one statistics page), so there is
+  no authoritative most-played-position reconstruction. A player's estimated
+  group (GK/DEF/MID/ATT/MIX) is derived from saves, goals, assists and
+  interceptions rates and is clearly labelled as a heuristic estimate.
+- **Role axes** give each estimated group its own six key statistics (e.g. GK:
+  saves, save %, passing, clean sheets, wins, experience). The expanded profile
+  shows these as same-role percentile bars plus the raw overall stats.
+- **Percentiles** compare only players in the same estimated role group within
+  the loaded cohort. Each axis needs five valid observations; ties use midranks.
+  Search changes which rows are visible but never the comparison sample.
+- **Scout heat** is a weighted score of output, creation, passing, winning,
+  minutes and discipline, not a percentile rank. Passing fractions such as
+  `0.85` display as `85.0%`.
+- **Pitch zones are illustrative**, using role templates and aggregate-stat
+  values. They do not show tracked movement or time spent in an area.
 
 ### Match analysis (`/matches/[id]`)
 
@@ -165,7 +160,7 @@ node qa/shots.cjs      # desktop + mobile screenshots of every page
 Scouting regression tests need no running server or network:
 
 ```bash
-node --test qa/scouting-math.test.cjs qa/scout-data.test.cjs qa/scout-loader.test.cjs qa/scout-presentation.test.cjs
+node --test qa/scouting-analytics.test.cjs
 ```
 
 After a production build, `node qa/scout-browser.cjs` serves the actual scouting

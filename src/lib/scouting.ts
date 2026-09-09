@@ -63,9 +63,9 @@ export function hexagonAxes(p: PlayerStatistics): ScoutProfile[] {
     return [
       { label: 'Saves', value: clamp01(perMatch(p.keeperSaves, apps) / r.savesPerMatch), raw: perMatch(p.keeperSaves, apps) },
       { label: 'Save %', value: clamp01((p.keeperSavePercentage ?? 0) / r.savePct), raw: p.keeperSavePercentage ?? 0 },
-      { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / 100 / r.passAccuracy), raw: p.passCompletionPercentageAverage },
+      { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / r.passAccuracy), raw: p.passCompletionPercentageAverage },
       { label: 'Clean sheets', value: clamp01(1 - perMatch(p.goalsConceded, apps) / 3), raw: perMatch(p.goalsConceded, apps) },
-      { label: 'Consistency', value: clamp01(p.winPercentage / r.winRate), raw: p.winPercentage },
+      { label: 'Consistency', value: clamp01(p.winPercentage / (r.winRate / 100)), raw: p.winPercentage },
       { label: 'Volume', value: clamp01(p.appearances / 100), raw: p.appearances },
     ];
   }
@@ -74,10 +74,47 @@ export function hexagonAxes(p: PlayerStatistics): ScoutProfile[] {
     { label: 'Goals', value: clamp01(perMatch(p.goals, apps) / r.goalsPerMatch), raw: perMatch(p.goals, apps) },
     { label: 'Assists', value: clamp01(perMatch(p.assists, apps) / r.assistsPerMatch), raw: perMatch(p.assists, apps) },
     { label: 'Shooting', value: clamp01(perMatch(p.shots, apps) / r.shotsPerMatch), raw: perMatch(p.shots, apps) },
-    { label: 'Passing', value: clamp01((p.passCompletionPercentageAverage / 100) / r.passAccuracy), raw: p.passCompletionPercentageAverage },
+    { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / r.passAccuracy), raw: p.passCompletionPercentageAverage },
     { label: 'Creating', value: clamp01(perMatch(p.keyPasses + p.chancesCreated, apps) / (r.keyPassesPerMatch + r.chancesPerMatch)), raw: perMatch(p.keyPasses + p.chancesCreated, apps) },
     { label: 'Defending', value: clamp01(perMatch(p.interceptions, apps) / r.interceptionsPerMatch), raw: perMatch(p.interceptions, apps) },
   ];
+}
+
+/** Role-specific axes: labels are heuristic estimates from aggregate stats. */
+export function roleAxes(p: PlayerStatistics): ScoutProfile[] {
+  const a = Math.max(1, p.appearances), r = REFERENCE;
+  const rate = (n: number) => perMatch(n, a);
+  const axis = (label: string, raw: number, max: number): ScoutProfile => ({ label, raw, value: clamp01(raw / max) });
+  switch (positionGroupOfStats(p)) {
+    case 'GK': return [axis('Saves', rate(p.keeperSaves), r.savesPerMatch), axis('Save %', p.keeperSavePercentage ?? 0, r.savePct), axis('Passing', p.passCompletionPercentageAverage, r.passAccuracy), axis('Clean sheets', clamp01(1-rate(p.goalsConceded)/3), 1), axis('Wins', p.winPercentage, r.winRate / 100), axis('Experience', p.appearances, 100)];
+    case 'DEF': return [axis('Interceptions', rate(p.interceptions), r.interceptionsPerMatch), axis('Passing', p.passCompletionPercentageAverage, r.passAccuracy), axis('Goal prevention', clamp01(1-rate(p.goalsConceded)/3), 1), axis('Possession', p.possessionPercentageAverage, 0.6), axis('Wins', p.winPercentage, r.winRate / 100), axis('Availability', p.appearances, 100)];
+    case 'MID': return [axis('Assists', rate(p.assists), r.assistsPerMatch), axis('Key passes', rate(p.keyPasses), r.keyPassesPerMatch), axis('Chances', rate(p.chancesCreated), r.chancesPerMatch), axis('Passing', p.passCompletionPercentageAverage, r.passAccuracy), axis('Possession', p.possessionPercentageAverage, 0.6), axis('Goals', rate(p.goals), r.goalsPerMatch)];
+    default: return [axis('Goals', rate(p.goals), r.goalsPerMatch), axis('Assists', rate(p.assists), r.assistsPerMatch), axis('Shots', rate(p.shots), r.shotsPerMatch), axis('xG', rate(p.expectedGoals), r.xgPerMatch), axis('On target', p.shotAccuracyPercentage, 0.6), axis('Minutes', p.secondsPlayed / 5400, 1)];
+  }
+}
+
+/** Midrank percentile among the supplied, already role-compatible cohort. */
+export function percentile(value: number, peers: number[]): number | null {
+  const valid = peers.filter(Number.isFinite);
+  if (!Number.isFinite(value) || valid.length < 5) return null;
+  const below = valid.filter((x) => x < value).length;
+  const equal = valid.filter((x) => x === value).length;
+  return (below + (equal + 1) / 2) / valid.length;
+}
+
+/**
+ * Same-role percentile bars. Compares the player's raw value on each role axis
+ * against the same axis of every other player in the same ESTIMATED role group
+ * from the full loaded cohort (search does not change the cohort).
+ */
+export function rolePercentiles(p: PlayerStatistics, cohort: PlayerStatistics[]) {
+  const axes = roleAxes(p);
+  const role = positionGroupOfStats(p);
+  const peers = cohort.filter((x) => positionGroupOfStats(x) === role);
+  return axes.map((axis, i) => ({
+    ...axis,
+    percentile: percentile(axis.raw, peers.map((x) => roleAxes(x)[i]?.raw ?? NaN)),
+  }));
 }
 
 /**
@@ -91,8 +128,8 @@ export function scoutScore(p: PlayerStatistics): number {
   const g = perMatch(p.goals, apps);
   const a = perMatch(p.assists, apps);
   const kp = perMatch(p.keyPasses + p.chancesCreated, apps);
-  const pass = (p.passCompletionPercentageAverage / 100) / REFERENCE.passAccuracy;
-  const win = p.winPercentage / REFERENCE.winRate;
+  const pass = p.passCompletionPercentageAverage / REFERENCE.passAccuracy;
+  const win = p.winPercentage / (REFERENCE.winRate / 100);
   const mins = clamp01(p.secondsPlayed / Math.max(1, apps) / (90 * 60)); // full-match share
   const discipline = clamp01(1 - perMatch(p.fouls + p.yellowCards + p.redCards * 3, apps) / 4);
 

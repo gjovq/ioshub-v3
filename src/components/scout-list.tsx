@@ -1,10 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { HexagonChart } from '@/components/hexagon';
+import { ScoutHeatmap } from '@/components/scout-heatmap';
 import { Card } from '@/components/ui';
-import { POSITION_COLORS, hexagonAxes, positionGroupOfStats, scoutScore } from '@/lib/scouting';
+import { POSITION_COLORS, hexagonAxes, positionGroupOfStats, scoutScore, rolePercentiles } from '@/lib/scouting';
 import { duration, num, pct } from '@/lib/format';
 import type { PlayerStatistics } from '@/lib/types';
 
@@ -12,18 +12,18 @@ import type { PlayerStatistics } from '@/lib/types';
  * Searchable scout list. One row per player; clicking a row expands the
  * hexagon profile and full stat breakdown inline.
  */
-export function ScoutList({ players }: { players: PlayerStatistics[] }) {
+export function ScoutList({ players, initialPosition = 'all' }: { players: PlayerStatistics[]; initialPosition?: string }) {
   const [query, setQuery] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = players.map((p) => ({ p, heat: scoutScore(p) }));
+    const base = players.filter((p) => initialPosition === 'all' || positionGroupOfStats(p) === initialPosition).map((p) => ({ p, heat: scoutScore(p) }));
     // heat ranking, highest first
     base.sort((a, b) => b.heat - a.heat);
     if (!q) return base;
     return base.filter((r) => r.p.name.toLowerCase().includes(q));
-  }, [players, query]);
+  }, [players, query, initialPosition]);
 
   return (
     <div>
@@ -68,15 +68,11 @@ export function ScoutList({ players }: { players: PlayerStatistics[] }) {
                   </span>
                   <GroupChip p={p} />
                   <span className="min-w-0 flex-1">
-                    <Link
-                      href={`/players/${p.playerId}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="block max-w-[14rem] truncate text-sm font-semibold text-chalk-100 hover:text-turf-400"
-                    >
+                    <span className="block max-w-[14rem] truncate text-sm font-semibold text-chalk-100">
                       {p.name}
-                    </Link>
+                    </span>
                     <span className="block text-[10px] text-chalk-600">
-                      {num(p.appearances)} apps · {pct(p.passCompletionPercentageAverage, true)} passing ·{' '}
+                      {num(p.appearances)} apps · {pct(p.passCompletionPercentageAverage)} passing ·{' '}
                       {duration(p.secondsPlayed)}
                     </span>
                   </span>
@@ -95,7 +91,7 @@ export function ScoutList({ players }: { players: PlayerStatistics[] }) {
                     <path d="M6 9l6 6 6-6" strokeLinecap="round" />
                   </svg>
                 </button>
-                {openId === p.playerId && <ScoutDetail p={p} heat={heat} />}
+                {openId === p.playerId && <ScoutDetail p={p} heat={heat} cohort={players} />}
               </li>
             ))}
           </ul>
@@ -105,11 +101,12 @@ export function ScoutList({ players }: { players: PlayerStatistics[] }) {
   );
 }
 
-function ScoutDetail({ p, heat }: { p: PlayerStatistics; heat: number }) {
+function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; cohort: PlayerStatistics[] }) {
   const axes = hexagonAxes(p);
   const group = positionGroupOfStats(p);
   const color = POSITION_COLORS[group];
   const apps = Math.max(1, p.appearances);
+  const percentileAxes = rolePercentiles(p, cohort);
 
   return (
     <div className="grid gap-4 border-t border-[var(--line)] bg-white/[0.015] px-4 py-4 sm:grid-cols-[220px_1fr]">
@@ -130,18 +127,23 @@ function ScoutDetail({ p, heat }: { p: PlayerStatistics; heat: number }) {
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 self-center text-[13px] sm:grid-cols-3">
+        {percentileAxes.map((a) => <Detail key={a.label} label={`${a.label} percentile`} value={a.percentile == null ? 'Not enough role peers' : `${Math.round(a.percentile * 100)}%`} />)}
         <Detail label="Goals /match" value={(p.goals / apps).toFixed(2)} />
         <Detail label="Assists /match" value={(p.assists / apps).toFixed(2)} />
         <Detail label="Shots /match" value={(p.shots / apps).toFixed(2)} />
-        <Detail label="Pass accuracy" value={pct(p.passCompletionPercentageAverage, true)} />
+        <Detail label="Pass accuracy" value={pct(p.passCompletionPercentageAverage)} />
         <Detail label="Key passes /m" value={((p.keyPasses + p.chancesCreated) / apps).toFixed(2)} />
         <Detail label="Interceptions /m" value={(p.interceptions / apps).toFixed(2)} />
         <Detail label="Expected goals" value={p.expectedGoals > 0 ? p.expectedGoals.toFixed(2) : '–'} />
-        <Detail label="Shots on target" value={`${pct(p.shotAccuracyPercentage, true)}`} />
-        <Detail label="Win rate" value={pct(p.winPercentage, true)} />
+        <Detail label="Shots on target" value={pct(p.shotAccuracyPercentage)} />
+        <Detail label="Win rate" value={pct(p.winPercentage)} />
         <Detail label="Cards" value={`${p.yellowCards}Y ${p.redCards}R`} />
         <Detail label="Distance /m" value={`${(p.distanceCoveredAverage / 1000).toFixed(2)} km`} />
         <Detail label="Rating" value={p.rating > 0 ? p.rating.toFixed(2) : '–'} />
+      </div>
+      <div className="sm:col-span-2">
+        <div className="label-xs mb-1.5">Role heatmap</div>
+        <ScoutHeatmap player={p} />
       </div>
     </div>
   );

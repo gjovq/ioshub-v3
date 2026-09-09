@@ -118,7 +118,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
         </h1>
         <p className="mt-1 text-sm text-chalk-500">
           {data
-            ? `${data.totalItems.toLocaleString('en-GB')} players in scope — click a row for the full profile`
+            ? `${data.totalItems.toLocaleString('en-GB')} players in scope — positions are estimated from statistics; click a row for the full profile`
             : 'Filter by division, position and thresholds to find targets'}
         </p>
       </header>
@@ -197,7 +197,7 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
           No players match these filters — try a lower appearance threshold.
         </p>
       ) : (
-        <ScoutList players={data.items} />
+        <ScoutList players={data.items} initialPosition={pos} />
       )}
     </div>
   );
