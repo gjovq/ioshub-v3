@@ -118,7 +118,7 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
           <span
             className="tabular rounded-md px-2.5 py-1 font-display text-2xl font-bold"
             style={{ background: `${color}1a`, color }}
-            title="Scout heat: mean percentile across this role's six axes vs same-role players"
+            title="Scout heat: mean percentile across this role's six axes vs same-role players in the selected period"
           >
             {heat}
           </span>
@@ -126,18 +126,36 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 self-center text-[13px] sm:grid-cols-3">
-        {percentileAxes.map((a) => (
-          <div key={a.label}>
-            <div className="label-xs">{a.label}</div>
-            <div className="tabular mt-0.5 font-semibold text-chalk-100" title={a.formula}>
-              {a.percentile == null
-                ? (roleRaw.find((x) => x.label === a.label)?.raw ?? 0).toFixed(2)
-                : `${Math.round(a.percentile * 100)}%`}
-              <span className="ml-1.5 text-[10px] font-normal text-chalk-600">{a.formula}</span>
-            </div>
-          </div>
-        ))}
+      <div className="self-center">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
+          {percentileAxes.map((a) => {
+            const rawVal = roleRaw.find((x) => x.label === a.label)?.raw ?? 0;
+            const isPct = a.percentile != null;
+            return (
+              <div key={a.label}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="label-xs truncate" title={a.formula}>{a.label}</span>
+                  <span className="tabular text-[11px] text-chalk-500">
+                    {isPct ? `${Math.round((a.percentile ?? 0) * 100)}th` : rawVal.toFixed(2)}
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${isPct ? Math.round((a.percentile ?? 0) * 100) : Math.round((a.value ?? 0) * 100)}%`,
+                      background: color,
+                      opacity: isPct ? 1 : 0.55,
+                    }}
+                  />
+                </div>
+                <div className="mt-0.5 text-[10px] text-chalk-600">{a.formula}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--line)] pt-3 text-[13px] sm:grid-cols-3">
         <Detail label="Goals /match" value={(p.goals / apps).toFixed(2)} />
         <Detail label="Assists /match" value={(p.assists / apps).toFixed(2)} />
         <Detail label="Shots /match" value={(p.shots / apps).toFixed(2)} />
@@ -150,6 +168,7 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
         <Detail label="Cards" value={`${p.yellowCards}Y ${p.redCards}R`} />
         <Detail label="Distance /m" value={`${(p.distanceCoveredAverage / 1000).toFixed(2)} km`} />
         <Detail label="Rating" value={p.rating > 0 ? p.rating.toFixed(2) : '–'} />
+        </div>
       </div>
     </div>
   );
