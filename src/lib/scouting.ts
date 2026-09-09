@@ -14,6 +14,8 @@ export interface ScoutProfile {
   value: number;
   /** raw number behind the normalised value, shown in tooltips */
   raw: number;
+  /** how the raw value is composed, shown in the UI */
+  formula: string;
 }
 
 /**
@@ -61,35 +63,71 @@ export function hexagonAxes(p: PlayerStatistics): ScoutProfile[] {
 
   if (isKeeper(p)) {
     return [
-      { label: 'Saves', value: clamp01(perMatch(p.keeperSaves, apps) / r.savesPerMatch), raw: perMatch(p.keeperSaves, apps) },
-      { label: 'Save %', value: clamp01((p.keeperSavePercentage ?? 0) / r.savePct), raw: p.keeperSavePercentage ?? 0 },
-      { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / r.passAccuracy), raw: p.passCompletionPercentageAverage },
-      { label: 'Clean sheets', value: clamp01(1 - perMatch(p.goalsConceded, apps) / 3), raw: perMatch(p.goalsConceded, apps) },
-      { label: 'Consistency', value: clamp01(p.winPercentage / (r.winRate / 100)), raw: p.winPercentage },
-      { label: 'Volume', value: clamp01(p.appearances / 100), raw: p.appearances },
+      { label: 'Saves', value: clamp01(perMatch(p.keeperSaves, apps) / r.savesPerMatch), raw: perMatch(p.keeperSaves, apps), formula: 'keeper saves ÷ matches' },
+      { label: 'Save %', value: clamp01((p.keeperSavePercentage ?? 0) / r.savePct), raw: p.keeperSavePercentage ?? 0, formula: 'keeper saves ÷ shots on target' },
+      { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / r.passAccuracy), raw: p.passCompletionPercentageAverage, formula: 'passes completed ÷ attempted' },
+      { label: 'Clean sheets', value: clamp01(1 - perMatch(p.goalsConceded, apps) / 3), raw: perMatch(p.goalsConceded, apps), formula: '1 − (conceded ÷ matches) ÷ 3' },
+      { label: 'Consistency', value: clamp01(p.winPercentage / (r.winRate / 100)), raw: p.winPercentage, formula: 'wins ÷ matches' },
+      { label: 'Volume', value: clamp01(p.appearances / 100), raw: p.appearances, formula: 'matches played' },
     ];
   }
 
   return [
-    { label: 'Goals', value: clamp01(perMatch(p.goals, apps) / r.goalsPerMatch), raw: perMatch(p.goals, apps) },
-    { label: 'Assists', value: clamp01(perMatch(p.assists, apps) / r.assistsPerMatch), raw: perMatch(p.assists, apps) },
-    { label: 'Shooting', value: clamp01(perMatch(p.shots, apps) / r.shotsPerMatch), raw: perMatch(p.shots, apps) },
-    { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / r.passAccuracy), raw: p.passCompletionPercentageAverage },
-    { label: 'Creating', value: clamp01(perMatch(p.keyPasses + p.chancesCreated, apps) / (r.keyPassesPerMatch + r.chancesPerMatch)), raw: perMatch(p.keyPasses + p.chancesCreated, apps) },
-    { label: 'Defending', value: clamp01(perMatch(p.interceptions, apps) / r.interceptionsPerMatch), raw: perMatch(p.interceptions, apps) },
+    { label: 'Goals', value: clamp01(perMatch(p.goals, apps) / r.goalsPerMatch), raw: perMatch(p.goals, apps), formula: 'goals ÷ matches' },
+    { label: 'Assists', value: clamp01(perMatch(p.assists, apps) / r.assistsPerMatch), raw: perMatch(p.assists, apps), formula: 'assists ÷ matches' },
+    { label: 'Shooting', value: clamp01(perMatch(p.shots, apps) / r.shotsPerMatch), raw: perMatch(p.shots, apps), formula: 'shots ÷ matches' },
+    { label: 'Passing', value: clamp01(p.passCompletionPercentageAverage / r.passAccuracy), raw: p.passCompletionPercentageAverage, formula: 'passes completed ÷ attempted' },
+    { label: 'Creating', value: clamp01(perMatch(p.keyPasses + p.chancesCreated, apps) / (r.keyPassesPerMatch + r.chancesPerMatch)), raw: perMatch(p.keyPasses + p.chancesCreated, apps), formula: '(key passes + chances) ÷ matches' },
+    { label: 'Defending', value: clamp01(perMatch(p.interceptions, apps) / r.interceptionsPerMatch), raw: perMatch(p.interceptions, apps), formula: 'interceptions ÷ matches' },
   ];
 }
 
-/** Role-specific axes: labels are heuristic estimates from aggregate stats. */
+/**
+ * Role-specific axes, each a composite formula over aggregate stats. Formulas
+ * are deliberately transparent (e.g. "chances created" blends key passes,
+ * assists at double weight and created chances) so the UI can show exactly how
+ * every number is derived. Roles are ESTIMATED from aggregate statistics.
+ */
 export function roleAxes(p: PlayerStatistics): ScoutProfile[] {
   const a = Math.max(1, p.appearances), r = REFERENCE;
   const rate = (n: number) => perMatch(n, a);
-  const axis = (label: string, raw: number, max: number): ScoutProfile => ({ label, raw, value: clamp01(raw / max) });
+  const axis = (label: string, raw: number, max: number, formula: string): ScoutProfile => ({ label, raw, value: clamp01(raw / max), formula });
+  const minutes = p.secondsPlayed / (a * 5400); // share of full 90-minute matches
+  const win = p.winPercentage; // fraction 0..1
+  const pass = p.passCompletionPercentageAverage; // fraction 0..1
   switch (positionGroupOfStats(p)) {
-    case 'GK': return [axis('Saves', rate(p.keeperSaves), r.savesPerMatch), axis('Save %', p.keeperSavePercentage ?? 0, r.savePct), axis('Passing', p.passCompletionPercentageAverage, r.passAccuracy), axis('Clean sheets', clamp01(1-rate(p.goalsConceded)/3), 1), axis('Wins', p.winPercentage, r.winRate / 100), axis('Experience', p.appearances, 100)];
-    case 'DEF': return [axis('Interceptions', rate(p.interceptions), r.interceptionsPerMatch), axis('Passing', p.passCompletionPercentageAverage, r.passAccuracy), axis('Goal prevention', clamp01(1-rate(p.goalsConceded)/3), 1), axis('Possession', p.possessionPercentageAverage, 0.6), axis('Wins', p.winPercentage, r.winRate / 100), axis('Availability', p.appearances, 100)];
-    case 'MID': return [axis('Assists', rate(p.assists), r.assistsPerMatch), axis('Key passes', rate(p.keyPasses), r.keyPassesPerMatch), axis('Chances', rate(p.chancesCreated), r.chancesPerMatch), axis('Passing', p.passCompletionPercentageAverage, r.passAccuracy), axis('Possession', p.possessionPercentageAverage, 0.6), axis('Goals', rate(p.goals), r.goalsPerMatch)];
-    default: return [axis('Goals', rate(p.goals), r.goalsPerMatch), axis('Assists', rate(p.assists), r.assistsPerMatch), axis('Shots', rate(p.shots), r.shotsPerMatch), axis('xG', rate(p.expectedGoals), r.xgPerMatch), axis('On target', p.shotAccuracyPercentage, 0.6), axis('Minutes', p.secondsPlayed / 5400, 1)];
+    case 'GK': return [
+      axis('Save %', p.keeperSavePercentage ?? 0, r.savePct, 'keeper saves ÷ shots on target'),
+      axis('Saves /match', rate(p.keeperSaves), r.savesPerMatch, 'keeper saves ÷ matches'),
+      axis('Goals prevented', clamp01(1 - rate(p.goalsConceded) / 3), 1, '1 − (conceded ÷ matches) ÷ 3'),
+      axis('Passing', pass, r.passAccuracy, 'passes completed ÷ attempted'),
+      axis('Wins', win, r.winRate / 100, 'wins ÷ matches'),
+      axis('Minutes', minutes, 1, 'seconds ÷ (matches × 90 min)'),
+    ];
+    case 'DEF': return [
+      axis('Def. actions /m', rate(p.interceptions) + p.slidingTacklesCompletedAverage, r.interceptionsPerMatch + r.tacklesPerMatch, 'interceptions/m + tackles/m'),
+      axis('Goal prevention', clamp01(1 - rate(p.goalsConceded) / 3), 1, '1 − (conceded ÷ matches) ÷ 3'),
+      axis('Passing', pass, r.passAccuracy, 'passes completed ÷ attempted'),
+      axis('Possession', p.possessionPercentageAverage, 0.6, 'avg possession share (fraction)'),
+      axis('Wins', win, r.winRate / 100, 'wins ÷ matches'),
+      axis('Minutes', minutes, 1, 'seconds ÷ (matches × 90 min)'),
+    ];
+    case 'MID': return [
+      axis('Chances created /m', rate(p.keyPasses) + 2 * rate(p.assists) + rate(p.chancesCreated), 4.5, 'key passes/m + 2 × assists/m + chances/m'),
+      axis('Goals /m', rate(p.goals), r.goalsPerMatch, 'goals ÷ matches'),
+      axis('Passing', pass, r.passAccuracy, 'passes completed ÷ attempted'),
+      axis('Possession', p.possessionPercentageAverage, 0.6, 'avg possession share (fraction)'),
+      axis('Work rate', p.distanceCoveredAverage, 9000, 'avg metres per match ÷ 9 km'),
+      axis('Minutes', minutes, 1, 'seconds ÷ (matches × 90 min)'),
+    ];
+    default: return [
+      axis('Output /m', rate(p.goals) + 0.8 * rate(p.assists), 1.7, 'goals/m + 0.8 × assists/m'),
+      axis('Finishing', rate(p.expectedGoals) > 0 ? rate(p.goals) / rate(p.expectedGoals) : 0, 1.5, 'goals ÷ xG (capped at 1.5)'),
+      axis('Shot volume /m', rate(p.shots), r.shotsPerMatch, 'shots ÷ matches'),
+      axis('Accuracy', p.shotAccuracyPercentage, 0.6, 'shots on target ÷ shots'),
+      axis('xG /match', rate(p.expectedGoals), r.xgPerMatch, 'expected goals ÷ matches'),
+      axis('Minutes', minutes, 1, 'seconds ÷ (matches × 90 min)'),
+    ];
   }
 }
 
@@ -115,6 +153,24 @@ export function rolePercentiles(p: PlayerStatistics, cohort: PlayerStatistics[])
     ...axis,
     percentile: percentile(axis.raw, peers.map((x) => roleAxes(x)[i]?.raw ?? NaN)),
   }));
+}
+
+/**
+ * Role-relative scout heat: the player's mean percentile across their role's
+ * six axes, among the same-role peers in the loaded cohort. Because every
+ * player is scored only against their own role, the best GK and the best CF
+ * can both reach ~100 — unlike the old absolute blend where GKs topped out
+ * around 65 while attackers neared 96. Falls back to the mean normalised axis
+ * value when the role has fewer than five peers for percentiles.
+ */
+export function roleHeat(p: PlayerStatistics, cohort: PlayerStatistics[]): number {
+  const bars = rolePercentiles(p, cohort);
+  const pcts = bars.map((b) => b.percentile).filter((v): v is number => v != null);
+  if (pcts.length === bars.length && pcts.length > 0) {
+    return Math.round((pcts.reduce((s, v) => s + v, 0) / pcts.length) * 100);
+  }
+  const vals = roleAxes(p).map((a) => a.value);
+  return Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 100);
 }
 
 /**

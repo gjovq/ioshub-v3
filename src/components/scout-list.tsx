@@ -2,9 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { HexagonChart } from '@/components/hexagon';
-import { ScoutHeatmap } from '@/components/scout-heatmap';
 import { Card } from '@/components/ui';
-import { POSITION_COLORS, hexagonAxes, positionGroupOfStats, scoutScore, rolePercentiles } from '@/lib/scouting';
+import { POSITION_COLORS, hexagonAxes, positionGroupOfStats, roleAxes, roleHeat, rolePercentiles } from '@/lib/scouting';
 import { duration, num, pct } from '@/lib/format';
 import type { PlayerStatistics } from '@/lib/types';
 
@@ -18,7 +17,7 @@ export function ScoutList({ players, initialPosition = 'all' }: { players: Playe
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = players.filter((p) => initialPosition === 'all' || positionGroupOfStats(p) === initialPosition).map((p) => ({ p, heat: scoutScore(p) }));
+    const base = players.filter((p) => initialPosition === 'all' || positionGroupOfStats(p) === initialPosition).map((p) => ({ p, heat: roleHeat(p, players) }));
     // heat ranking, highest first
     base.sort((a, b) => b.heat - a.heat);
     if (!q) return base;
@@ -107,6 +106,7 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
   const color = POSITION_COLORS[group];
   const apps = Math.max(1, p.appearances);
   const percentileAxes = rolePercentiles(p, cohort);
+  const roleRaw = roleAxes(p);
 
   return (
     <div className="grid gap-4 border-t border-[var(--line)] bg-white/[0.015] px-4 py-4 sm:grid-cols-[220px_1fr]">
@@ -118,7 +118,7 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
           <span
             className="tabular rounded-md px-2.5 py-1 font-display text-2xl font-bold"
             style={{ background: `${color}1a`, color }}
-            title="Scout heat: output, creation, passing, winning, minutes, discipline"
+            title="Scout heat: mean percentile across this role's six axes vs same-role players"
           >
             {heat}
           </span>
@@ -127,7 +127,17 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 self-center text-[13px] sm:grid-cols-3">
-        {percentileAxes.map((a) => <Detail key={a.label} label={`${a.label} percentile`} value={a.percentile == null ? 'Not enough role peers' : `${Math.round(a.percentile * 100)}%`} />)}
+        {percentileAxes.map((a) => (
+          <div key={a.label}>
+            <div className="label-xs">{a.label}</div>
+            <div className="tabular mt-0.5 font-semibold text-chalk-100" title={a.formula}>
+              {a.percentile == null
+                ? (roleRaw.find((x) => x.label === a.label)?.raw ?? 0).toFixed(2)
+                : `${Math.round(a.percentile * 100)}%`}
+              <span className="ml-1.5 text-[10px] font-normal text-chalk-600">{a.formula}</span>
+            </div>
+          </div>
+        ))}
         <Detail label="Goals /match" value={(p.goals / apps).toFixed(2)} />
         <Detail label="Assists /match" value={(p.assists / apps).toFixed(2)} />
         <Detail label="Shots /match" value={(p.shots / apps).toFixed(2)} />
@@ -140,10 +150,6 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
         <Detail label="Cards" value={`${p.yellowCards}Y ${p.redCards}R`} />
         <Detail label="Distance /m" value={`${(p.distanceCoveredAverage / 1000).toFixed(2)} km`} />
         <Detail label="Rating" value={p.rating > 0 ? p.rating.toFixed(2) : '–'} />
-      </div>
-      <div className="sm:col-span-2">
-        <div className="label-xs mb-1.5">Role heatmap</div>
-        <ScoutHeatmap player={p} />
       </div>
     </div>
   );
