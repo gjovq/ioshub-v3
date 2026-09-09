@@ -122,7 +122,7 @@ export function roleAxes(p: PlayerStatistics): ScoutProfile[] {
     ];
     default: return [
       axis('Output /m', rate(p.goals) + 0.8 * rate(p.assists), 1.7, 'goals/m + 0.8 × assists/m'),
-      axis('Finishing', rate(p.expectedGoals) > 0 ? rate(p.goals) / rate(p.expectedGoals) : 0, 1.5, 'goals ÷ xG (capped at 1.5)'),
+      axis('Finishing', rate(p.goals) - rate(p.expectedGoals), 0.6, 'goals/m − xG/m (overperformance)'),
       axis('Shot volume /m', rate(p.shots), r.shotsPerMatch, 'shots ÷ matches'),
       axis('Accuracy', p.shotAccuracyPercentage, 0.6, 'shots on target ÷ shots'),
       axis('xG /match', rate(p.expectedGoals), r.xgPerMatch, 'expected goals ÷ matches'),
@@ -135,6 +135,10 @@ export function roleAxes(p: PlayerStatistics): ScoutProfile[] {
 export function percentile(value: number, peers: number[]): number | null {
   const valid = peers.filter(Number.isFinite);
   if (!Number.isFinite(value) || valid.length < 5) return null;
+  // Degenerate axis: every peer shares the same value (e.g. xG is 0 for the
+  // whole cohort), so a percentile is meaningless — fall back to the raw value
+  // instead of reporting a flat "50th".
+  if (valid.every((x) => x === valid[0])) return null;
   const below = valid.filter((x) => x < value).length;
   const equal = valid.filter((x) => x === value).length;
   return (below + (equal + 1) / 2) / valid.length;

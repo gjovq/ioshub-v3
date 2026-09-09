@@ -85,6 +85,11 @@ test('percentile uses midrank and needs at least five finite peers', () => {
   assert.equal(percentile(NaN, [0.1, 0.2, 0.3, 0.4, 0.5]), null, 'non-finite value');
 });
 
+test('percentile returns null (not a fake 50th) when the axis has no spread', () => {
+  assert.equal(percentile(0.3, [0, 0, 0, 0, 0, 0]), null, 'degenerate all-equal axis');
+  assert.equal(percentile(0.3, [0, 0, 0, 0, 0, 1]), 11 / 12, 'spread exists -> real percentile');
+});
+
 test('rolePercentiles compares only same-role peers from the full cohort', () => {
   const cohort = [];
   for (let i = 0; i < 8; i++) cohort.push(player({ playerId: i + 1, goals: i, assists: i }));
