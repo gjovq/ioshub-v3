@@ -95,19 +95,22 @@ export function roleAxes(p: PlayerStatistics): ScoutProfile[] {
   const minutes = p.secondsPlayed / (a * 5400); // share of full 90-minute matches
   const win = p.winPercentage; // fraction 0..1
   const pass = p.passCompletionPercentageAverage; // fraction 0..1
+  // Fraction of shots faced that were saved — inherently 0..1, never clamps to
+  // 0 like "1 − conceded/m ÷ 3" did for real keepers (conceded/m ≈ 2.6–4.0).
+  const saveRate = p.keeperSaves + p.goalsConceded > 0 ? p.keeperSaves / (p.keeperSaves + p.goalsConceded) : 0;
   switch (positionGroupOfStats(p)) {
     case 'GK': return [
       axis('Save %', p.keeperSavePercentage ?? 0, r.savePct, 'keeper saves ÷ shots on target'),
       axis('Saves /match', rate(p.keeperSaves), r.savesPerMatch, 'keeper saves ÷ matches'),
-      axis('Goals prevented', clamp01(1 - rate(p.goalsConceded) / 3), 1, '1 − (conceded ÷ matches) ÷ 3'),
-      axis('Passing', pass, r.passAccuracy, 'passes completed ÷ attempted'),
+      axis('Goals prevented', clamp01(1 - rate(p.goalsConceded) / 6), 1, '1 − (conceded ÷ matches) ÷ 6'),
+      axis('Passing', pass, r.passAccuracy, 'pass completion % (match-independent)'),
       axis('Wins', win, r.winRate / 100, 'wins ÷ matches'),
       axis('Minutes', minutes, 1, 'seconds ÷ (matches × 90 min)'),
     ];
     case 'DEF': return [
       axis('Def. actions /m', rate(p.interceptions) + p.slidingTacklesCompletedAverage, r.interceptionsPerMatch + r.tacklesPerMatch, 'interceptions/m + tackles/m'),
-      axis('Goal prevention', clamp01(1 - rate(p.goalsConceded) / 3), 1, '1 − (conceded ÷ matches) ÷ 3'),
-      axis('Passing', pass, r.passAccuracy, 'passes completed ÷ attempted'),
+      axis('Goal prevention', saveRate, 0.65, 'saves ÷ (saves + conceded)'),
+      axis('Passing', pass, r.passAccuracy, 'pass completion % (match-independent)'),
       axis('Possession', p.possessionPercentageAverage, 0.6, 'avg possession share (fraction)'),
       axis('Wins', win, r.winRate / 100, 'wins ÷ matches'),
       axis('Minutes', minutes, 1, 'seconds ÷ (matches × 90 min)'),
