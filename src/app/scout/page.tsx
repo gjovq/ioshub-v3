@@ -6,6 +6,7 @@ import {
   getPlayerStatistics,
   getPlayerStatisticsForTeam,
   getRegions,
+  getTeamSquad,
   getTournamentTeams,
   safe,
 } from '@/lib/api';
@@ -58,6 +59,27 @@ function mergeTeamStats(pages: (PlayerStatistics[] | null)[]): PlayerStatistics[
   return [...byId.values()];
 }
 
+/**
+ * Player IDs genuinely at a club right now: current, not pending, and not
+ * trialists or players registered elsewhere on loan (role 3 "Loaned out").
+ * Incoming loanees (role 2) ARE included — they actually play for this club,
+ * which also keeps them out of their parent club's division.
+ */
+async function eligibleSquadPlayerIds(teamId: number): Promise<Set<number>> {
+  const squad = (await safe(getTeamSquad(teamId))) ?? [];
+  return new Set(
+    squad
+      .filter(
+        (s) =>
+          s.playerTeam.isCurrentTeam &&
+          !s.playerTeam.isPending &&
+          s.playerTeam.teamRole !== 0 && // Trialist
+          s.playerTeam.teamRole !== 3, // Loaned out (registered elsewhere)
+      )
+      .map((s) => s.playerTeam.playerId),
+  );
+}
+
 export default async function ScoutPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === 'string' ? (sp[k] as string) : undefined);
@@ -83,14 +105,24 @@ export default async function ScoutPage({ searchParams }: { searchParams: SP }) 
 
   let data: { items: PlayerStatistics[]; totalItems: number; totalPages: number; page: number } | null;
   if (division !== 'all' && divisionTeamIds[division]?.length) {
-    // Division scope: query each member team and merge. The client list handles
-    // search/heat ordering, so fetch a generous page per team.
-    const pages = await Promise.all(
-      divisionTeamIds[division].map((teamId) =>
-        safe(getPlayerStatisticsForTeam({ teamId, pageSize: 200, filters: baseFilters })),
+    // Division scope: only players on a member team's CURRENT squad count.
+    // Squad membership filters out departed players and loanees registered at
+    // their parent club; the stats query alone includes anyone who ever played.
+    const teamIds = divisionTeamIds[division];
+    const [squads, pages] = await Promise.all([
+      Promise.all(teamIds.map((teamId) => eligibleSquadPlayerIds(teamId))),
+      Promise.all(
+        teamIds.map((teamId) =>
+          safe(getPlayerStatisticsForTeam({ teamId, pageSize: 200, filters: baseFilters })),
+        ),
       ),
-    );
-    const merged = mergeTeamStats(pages.map((pg) => pg?.items ?? null));
+    ]);
+    const eligible = new Map(teamIds.map((teamId, i) => [teamId, squads[i]]));
+    const filtered = pages.map((pg, i) => {
+      const ids = eligible.get(teamIds[i]);
+      return (pg?.items ?? []).filter((p) => ids?.has(p.playerId));
+    });
+    const merged = mergeTeamStats(filtered);
     data = {
       items: merged,
       totalItems: merged.length,
