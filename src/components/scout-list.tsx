@@ -162,7 +162,7 @@ function ScoutDetail({ p, heat, cohort }: { p: PlayerStatistics; heat: number; c
         <Detail label="Pass accuracy" value={pct(p.passCompletionPercentageAverage)} />
         <Detail label="Key passes /m" value={((p.keyPasses + p.chancesCreated) / apps).toFixed(2)} />
         <Detail label="Interceptions /m" value={(p.interceptions / apps).toFixed(2)} />
-        <Detail label="Expected goals" value={p.expectedGoals > 0 ? p.expectedGoals.toFixed(2) : '–'} />
+        <Detail label="Shot conversion" value={pct(p.shotConversionPercentage)} />
         <Detail label="Shots on target" value={pct(p.shotAccuracyPercentage)} />
         <Detail label="Win rate" value={pct(p.winPercentage)} />
         <Detail label="Cards" value={`${p.yellowCards}Y ${p.redCards}R`} />

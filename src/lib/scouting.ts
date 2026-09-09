@@ -122,10 +122,10 @@ export function roleAxes(p: PlayerStatistics): ScoutProfile[] {
     ];
     default: return [
       axis('Output /m', rate(p.goals) + 0.8 * rate(p.assists), 1.7, 'goals/m + 0.8 × assists/m'),
-      axis('Finishing', rate(p.goals) - rate(p.expectedGoals), 0.6, 'goals/m − xG/m (overperformance)'),
+      axis('Conversion', p.shotConversionPercentage, 0.3, 'goals ÷ shots (capped at 30%)'),
       axis('Shot volume /m', rate(p.shots), r.shotsPerMatch, 'shots ÷ matches'),
       axis('Accuracy', p.shotAccuracyPercentage, 0.6, 'shots on target ÷ shots'),
-      axis('xG /match', rate(p.expectedGoals), r.xgPerMatch, 'expected goals ÷ matches'),
+      axis('Fouls drawn /m', rate(p.foulsSuffered), 2.5, 'fouls suffered ÷ matches'),
       axis('Minutes', minutes, 1, 'seconds ÷ (matches × 90 min)'),
     ];
   }

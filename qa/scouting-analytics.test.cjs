@@ -46,6 +46,7 @@ function player(over = {}) {
     keyPasses: 5,
     chancesCreated: 4,
     interceptions: 10,
+    foulsSuffered: 5,
     slidingTacklesCompletedAverage: 1,
     fouls: 2,
     wins: 5,
